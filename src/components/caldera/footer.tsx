@@ -1,7 +1,26 @@
 const cols = [
-  { title: "Product", links: ["How it works", "What you get", "Pricing", "FAQ"] },
-  { title: "Company", links: ["About", "Blog", "Contact"] },
-  { title: "Legal", links: ["Privacy policy", "Terms of service"] },
+  {
+    title: "Product",
+    links: [
+      { label: "How it works", href: "/#how-it-works" },
+      { label: "What you get", href: "/#what-you-get" },
+      { label: "Pricing", href: "/pricing" },
+      { label: "FAQ", href: "/#faq" },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { label: "Contact", href: "mailto:hello@pitchready.co" },
+    ],
+  },
+  {
+    title: "Legal",
+    links: [
+      { label: "Privacy policy", href: "/privacy" },
+      { label: "Terms of service", href: "/terms" },
+    ],
+  },
 ];
 
 export function CalderaFooter() {
@@ -44,12 +63,12 @@ export function CalderaFooter() {
               </span>
               {c.links.map((l) => (
                 <a
-                  key={l}
-                  href="#"
+                  key={l.label}
+                  href={l.href}
                   className="gic-underline text-[13px] font-[400] text-white/60 transition-colors hover:text-[var(--color-slate-cyan)] sm:text-[14px]"
-                  style={{ fontFamily: "var(--font-af)" }}
+                  style={{ fontFamily: "var(--font-af)", textDecoration: "none" }}
                 >
-                  {l}
+                  {l.label}
                 </a>
               ))}
             </div>

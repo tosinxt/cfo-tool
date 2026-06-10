@@ -236,17 +236,31 @@ const Cloudscape = ({
       return;
     }
 
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const { width, height } = host.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.floor(width * dpr));
-      canvas.height = Math.max(1, Math.floor(height * dpr));
+      // Use window dimensions for fixed-position backgrounds — avoids
+      // ResizeObserver firing on every Safari URL-bar scroll event
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const newW = Math.max(1, Math.floor(w * dpr));
+      const newH = Math.max(1, Math.floor(h * dpr));
+      if (canvas.width === newW && canvas.height === newH) return;
+      canvas.width = newW;
+      canvas.height = newH;
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(resolutionUniformLocation, canvas.width, canvas.height);
     };
 
+    const debouncedResize = () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 120);
+    };
+
     resize();
-    const resizeObserver = new ResizeObserver(resize);
+    window.addEventListener("resize", debouncedResize, { passive: true });
+    // Still observe host for non-scroll layout changes, but debounced
+    const resizeObserver = new ResizeObserver(debouncedResize);
     resizeObserver.observe(host);
 
     let animationFrameId = 0;
@@ -293,6 +307,8 @@ const Cloudscape = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      window.removeEventListener("resize", debouncedResize);
+      if (resizeTimer) clearTimeout(resizeTimer);
       gl.deleteBuffer(screenQuadVertexBuffer);
       gl.deleteProgram(glProgram);
       gl.deleteShader(vertexShaderObject);
@@ -304,10 +320,10 @@ const Cloudscape = ({
     <div
       ref={hostRef}
       className={cn(
-        "relative flex w-full items-center overflow-hidden bg-black",
+        "relative flex w-full items-center overflow-hidden",
         className,
       )}
-      style={{ height, containerType: "size", ...style }}
+      style={{ height, ...style }}
       {...props}
     >
       <canvas
