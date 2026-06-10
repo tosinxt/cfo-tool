@@ -1,27 +1,197 @@
+@import "tw-animate-css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+:root {
+  /* GIC Design System */
+  --color-hudson-blue: #0081c0;
+  --color-slate-cyan: #41a1cf;
+  --color-graphite-night: #282834;
+  --color-ink: #171717;
+  --color-carbon: #2c2c2c;
+  --color-iron: #444141;
+  --color-steel: #646464;
+  --color-fog: #b4b8b4;
+  --color-ash: #a5afaf;
+  --color-mist: #cfd3cf;
+  --color-sage: #dee2de;
+  --color-cream: #fefffc;
+  --color-linen: #f9faf7;
+  --color-paper: #ffffff;
+  --color-obsidian: #1f1f29;
+
+  --shadow-sm: rgba(0, 0, 0, 0.15) 0px 2px 6px 0px;
+  --shadow-subtle: rgb(222, 226, 222) 0px 0px 0px 1px;
+  --shadow-subtle-2: rgba(0, 0, 0, 0.08) 0px 1px 1px 0px, rgba(0, 0, 0, 0.08) 0px 4px 5px 0px;
+  --shadow-subtle-3: rgba(0, 0, 0, 0.06) 0px 2px 2px 0px, rgba(0, 0, 0, 0.04) 0px 0px 0px 5px;
+  --shadow-sm-2: rgba(0, 0, 0, 0.05) 0px 1px 8px 0px;
+}
+
+@keyframes gic-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.gic-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: gic-marquee 28s linear infinite;
+  will-change: transform;
+}
+
+/* ── Hover spring system ──────────────────────────────────────────── */
+
+/* Card lift — translateY with spring overshoot */
+.gic-lift {
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 200ms ease;
+}
+.gic-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: rgba(0,0,0,0.08) 0px 10px 28px, rgba(0,0,0,0.04) 0px 2px 6px;
+}
+
+/* Gentle lift for smaller elements */
+.gic-lift-sm {
+  transition: transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 180ms ease;
+}
+.gic-lift-sm:hover {
+  transform: translateY(-2px);
+  box-shadow: rgba(0,0,0,0.06) 0px 6px 18px;
+}
+
+/* Scale pop for buttons and pills */
+.gic-spring {
+  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gic-spring:hover {
+  transform: scale(1.04);
+}
+
+/* Underline slides in from left */
+.gic-underline {
+  position: relative;
+  text-decoration: none !important;
+}
+.gic-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: currentColor;
+  transition: width 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gic-underline:hover::after {
+  width: 100%;
+}
+
+/* Row hover — subtle bg tint */
+.gic-row-hover {
+  transition: background 180ms ease, padding-left 180ms ease;
+}
+.gic-row-hover:hover {
+  background: rgba(0,129,192,0.035);
+  padding-left: 4px;
+}
+
+/* Number scales up on stat card group hover */
+.gic-stat-group:hover .gic-stat-number {
+  color: var(--color-hudson-blue);
+  transform: scale(1.04);
+}
+.gic-stat-number {
+  display: block;
+  transition: color 200ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: left center;
+}
+
+@layer base {
+  :root {
+    --background: #fefffc;
+    --foreground: #171717;
+    --card: #ffffff;
+    --card-foreground: #171717;
+    --popover: #ffffff;
+    --popover-foreground: #171717;
+    --primary: #1f1f29;
+    --primary-foreground: #ffffff;
+    --secondary: #f9faf7;
+    --secondary-foreground: #171717;
+    --muted: #f9faf7;
+    --muted-foreground: #646464;
+    --accent: #f9faf7;
+    --accent-foreground: #171717;
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: #dee2de;
+    --input: #dee2de;
+    --ring: #41a1cf;
+    --chart-1: #171717;
+    --chart-2: #444141;
+    --chart-3: #646464;
+    --chart-4: #b4b8b4;
+    --chart-5: #dee2de;
+    --radius: 0.25rem;
+    --sidebar: #f9faf7;
+    --sidebar-foreground: #171717;
+    --sidebar-primary: #1f1f29;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #fefffc;
+    --sidebar-accent-foreground: #171717;
+    --sidebar-border: #dee2de;
+    --sidebar-ring: #41a1cf;
+  }
+
+  .dark {
+    --background: #171717;
+    --foreground: #fefffc;
+    --card: #1f1f29;
+    --card-foreground: #fefffc;
+    --popover: #1f1f29;
+    --popover-foreground: #fefffc;
+    --primary: #41a1cf;
+    --primary-foreground: #ffffff;
+    --secondary: #282834;
+    --secondary-foreground: #fefffc;
+    --muted: #282834;
+    --muted-foreground: #646464;
+    --accent: #282834;
+    --accent-foreground: #fefffc;
+    --destructive: oklch(0.65 0.22 25);
+    --border: rgba(255, 255, 255, 0.08);
+    --input: rgba(255, 255, 255, 0.08);
+    --ring: #41a1cf;
+    --chart-1: #41a1cf;
+    --chart-2: #0081c0;
+    --chart-3: #cfd3cf;
+    --chart-4: #646464;
+    --chart-5: #282834;
+    --sidebar: #1f1f29;
+    --sidebar-foreground: #fefffc;
+    --sidebar-primary: #41a1cf;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #282834;
+    --sidebar-accent-foreground: #fefffc;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-ring: #41a1cf;
+  }
+
+  * {
+    @apply border-border outline-ring;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
