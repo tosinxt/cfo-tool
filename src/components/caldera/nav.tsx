@@ -89,7 +89,7 @@ export function CalderaNav() {
               }}
             />
             <a
-              href="#get-started"
+              href="/intake/demo-engagement-001?token=demo-token-insecure"
               className="flex items-center gap-1.5 rounded-[50px] px-4 py-[7px] text-[13px] font-[500] leading-none transition-all duration-150"
               style={{
                 color: "var(--color-slate-cyan)",
@@ -120,7 +120,7 @@ export function CalderaNav() {
             style={{ border: "none" }}
           >
             <a
-              href="#get-started"
+              href="/intake/demo-engagement-001?token=demo-token-insecure"
               className="rounded-[50px] px-3.5 py-[7px] text-[13px] font-[500] leading-none"
               style={{
                 color: "var(--color-slate-cyan)",
@@ -208,7 +208,7 @@ export function CalderaNav() {
 
           <div className="px-2 pb-1 pt-2" style={{ border: "none" }}>
             <a
-              href="#get-started"
+              href="/intake/demo-engagement-001?token=demo-token-insecure"
               onClick={() => setOpen(false)}
               className="flex items-center justify-center rounded-[12px] py-3.5 text-[15px] font-[500] leading-none transition-colors"
               style={{
