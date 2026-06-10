@@ -1,7 +1,12 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+  images: {
+    formats: ["image/avif", "image/webp"],
+    deviceSizes: [390, 640, 768, 1080, 1280, 1920],
+  },
+};
 
 export default withSentryConfig(nextConfig, {
   // For all available options, see:

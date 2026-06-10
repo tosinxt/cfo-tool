@@ -352,11 +352,11 @@ function InputAdornment({ prefix, suffix, children }: { prefix?: string; suffix?
 // ─── Styled inputs ────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
-  fontFamily: "var(--font-af)", fontSize: "14px", color: "var(--color-ink)",
+  fontFamily: "var(--font-af)", fontSize: "16px", color: "var(--color-ink)",
   background: "rgba(255,255,255,0.92)", border: "1px solid #b8bdb8",
   borderRadius: "6px", padding: "11px 14px", width: "100%",
   outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
-  height: "44px", boxSizing: "border-box",
+  height: "48px", boxSizing: "border-box", touchAction: "manipulation",
 };
 
 const StyledInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement> & { valid?: boolean }>(
@@ -1051,7 +1051,7 @@ function ProjectionRows({ value, onChange }: { value: string; onChange: (v: stri
           placeholder="Key growth driver (optional)"
           onChange={e => onChange(serialize(y1, y2, y3, e.target.value))}
           style={{
-            flex: 1, padding: "10px 14px", fontSize: "13px",
+            flex: 1, padding: "10px 14px", fontSize: "16px",
             fontFamily: "var(--font-af)", color: "var(--color-ink)",
             background: "transparent", border: "none", outline: "none",
           }}
@@ -1096,7 +1096,7 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
-          flex: 1, padding: "12px 12px 12px 2px", fontSize: "14px",
+          flex: 1, padding: "12px 12px 12px 2px", fontSize: "16px",
           fontFamily: "var(--font-af)", color: "var(--color-ink)",
           background: "transparent", border: "none", outline: "none",
         }}
@@ -1256,7 +1256,7 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
               value={row.category}
               placeholder={FUNDS_CHIPS[i] ?? "Category"}
               onChange={e => setCategory(i, e.target.value)}
-              style={{ flex: 1, padding: "11px 14px", fontSize: "13px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none" }}
+              style={{ flex: 1, padding: "11px 14px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none" }}
             />
             <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "0 12px", borderLeft: "1px solid #eaece9", flexShrink: 0 }}>
               <input
@@ -1265,7 +1265,7 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
                 value={row.pct}
                 placeholder="0"
                 onChange={e => setPct(i, e.target.value.replace(/[^0-9]/g, ""))}
-                style={{ width: "36px", fontSize: "13px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                style={{ width: "44px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               />
               <span style={{ fontSize: "13px", color: "#9ca39c", fontFamily: "var(--font-af)" }}>%</span>
             </div>
@@ -1356,7 +1356,7 @@ function TagInput({ value, onChange }: { value: string; onChange: (v: string) =>
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={() => { if (input.trim()) addTag(input); }}
-        style={{ flex: 1, minWidth: "120px", fontSize: "13px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", padding: "2px 4px" }}
+        style={{ flex: 1, minWidth: "120px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", padding: "2px 4px" }}
       />
     </div>
   );
@@ -1523,7 +1523,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="relative min-h-screen px-4 pb-20 pt-10 sm:px-8 sm:pt-14"
+      className="relative min-h-screen px-4 pb-28 pt-8 sm:px-8 sm:pt-14"
       style={{ fontFamily: "var(--font-af)", "--color-fog": "#7a807a", "--color-steel": "#4a4a4a" } as React.CSSProperties}
     >
       <Cloudscape
@@ -1566,7 +1566,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
               animate="center"
               exit="exit"
               transition={{ duration: 0.22, ease: "easeOut" }}
-              className="text-[36px] font-[400] leading-[1.08] tracking-[-0.72px] sm:text-[44px]"
+              className="text-[28px] font-[400] leading-[1.1] tracking-[-0.56px] sm:text-[40px]"
               style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}
             >
               {STEPS[step]}
@@ -1648,7 +1648,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
             {step > 0 && (
               <button type="button" onClick={handleBack}
                 className="rounded-[8px] px-5 text-[14px] font-[500] transition-all"
-                style={{ border: "1px solid rgba(0,0,0,0.12)", color: "var(--color-iron)", background: "rgba(255,255,255,0.6)", minHeight: "44px", cursor: "pointer" }}
+                style={{ border: "1px solid rgba(0,0,0,0.12)", color: "var(--color-iron)", background: "rgba(255,255,255,0.6)", minHeight: "48px", cursor: "pointer", touchAction: "manipulation" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.9)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.6)"; }}
               >← Back</button>
@@ -1657,7 +1657,8 @@ export default function IntakeForm({ engagementId, token }: Props) {
               className="flex-1 rounded-[8px] text-white disabled:opacity-50"
               style={{
                 background: step === STEPS.length - 1 ? "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)" : "var(--color-obsidian)",
-                minHeight: step === STEPS.length - 1 ? "52px" : "44px",
+                minHeight: step === STEPS.length - 1 ? "52px" : "48px",
+                touchAction: "manipulation",
                 fontSize: step === STEPS.length - 1 ? "15px" : "14px",
                 fontWeight: step === STEPS.length - 1 ? 600 : 500,
                 letterSpacing: step === STEPS.length - 1 ? "-0.01em" : "0",

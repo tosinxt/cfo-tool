@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 
 const steps = [
   {
@@ -73,11 +74,14 @@ function DesktopConnected() {
       <div className="sticky top-0 h-screen grid grid-cols-2 overflow-hidden">
         {/* Left — image */}
         <div className="relative h-full">
-          <img
+          <Image
             src="/image.png"
             alt=""
             aria-hidden
-            className="absolute inset-0 h-full w-full object-cover"
+            fill
+            sizes="50vw"
+            className="object-cover"
+            quality={85}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
           <div className="absolute right-6 top-1/2 flex -translate-y-1/2 flex-col gap-2">

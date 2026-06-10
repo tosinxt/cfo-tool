@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export function CalderaCTA({
   onGetStarted,
   loading,
@@ -11,12 +13,16 @@ export function CalderaCTA({
     <section id="get-started" className="mx-auto w-full max-w-[1200px] px-4 sm:px-8">
       <div className="relative overflow-hidden rounded-[12px] sm:rounded-[16px]">
         {/* Background image — full, uncropped */}
-        <img
+        <Image
           src="/CTA.png"
           alt=""
           aria-hidden
+          width={1200}
+          height={500}
+          sizes="(max-width: 1200px) 100vw, 1200px"
           className="block w-full"
           style={{ minHeight: "280px", objectFit: "cover" }}
+          quality={85}
         />
 
         {/* Scrim — stronger on mobile for legibility */}

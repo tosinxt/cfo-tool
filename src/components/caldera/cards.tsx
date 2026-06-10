@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 
 const deliverables = [
   {
@@ -224,11 +225,14 @@ function DesktopCards() {
                       opacity: 0.4,
                     }}
                   />
-                  <img
+                  <Image
                     src={d.image}
                     alt={d.title}
-                    className="absolute inset-0 h-full w-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 48vw"
+                    className="object-cover"
                     style={{ transform: `translateY(${relPos * -40}px) scale(1.05)`, willChange: "transform" }}
+                    quality={85}
                     onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0"; }}
                   />
                   <div
@@ -285,10 +289,13 @@ function MobileCards() {
                 backgroundSize: "36px 36px",
               }}
             >
-              <img
+              <Image
                 src={d.image}
                 alt={d.title}
-                className="h-full w-full object-cover"
+                fill
+                sizes="100vw"
+                className="object-cover"
+                quality={85}
                 onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0"; }}
               />
             </div>

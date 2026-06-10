@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export function CalderaHero({
   onGetStarted,
   loading,
@@ -8,11 +10,15 @@ export function CalderaHero({
   return (
     <section className="relative h-screen w-full overflow-hidden">
       {/* Full-bleed painted illustration */}
-      <img
+      <Image
         src="/hero.png"
         alt=""
         aria-hidden
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+        quality={85}
       />
 
       {/* Mobile: gradient scrim from bottom so text is readable */}
