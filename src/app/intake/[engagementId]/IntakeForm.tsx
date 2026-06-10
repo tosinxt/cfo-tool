@@ -625,7 +625,7 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
         <CharTextarea
           {...register("oneLiner")}
           id="oneLiner" rows={2} maxLength={160} currentLength={oneLiner.length}
-          placeholder="We help X do Y without Z"
+          placeholder="We help [who] do [what] without [pain]"
           valid={touchedFields.oneLiner && !errors.oneLiner && oneLiner.length > 10}
         />
       </Field>
@@ -633,7 +633,7 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
       <Field label="Sector" htmlFor="sector" error={errors.sector?.message} required>
         <StyledInput
           {...register("sector")}
-          id="sector" placeholder="e.g. FinTech, HealthTech, SaaS"
+          id="sector" placeholder="SaaS, FinTech, HealthTech…"
           valid={touchedFields.sector && !errors.sector && sector.length > 0}
         />
         <QuickChips chips={SECTOR_CHIPS} onSelect={(chip) => setValue("sector", chip, { shouldValidate: true })} />
@@ -663,7 +663,7 @@ function Step2({ form }: { form: FormInstance }) {
         <CharTextarea
           {...register("problem")}
           id="problem" rows={4} maxLength={600} currentLength={problem.length}
-          placeholder="Describe the pain point — its frequency, severity, and who suffers most."
+          placeholder="What's broken, how often, and who feels it most?"
           valid={touchedFields.problem && !errors.problem && problem.length > 30}
         />
       </Field>
@@ -679,7 +679,7 @@ function Step2({ form }: { form: FormInstance }) {
         <CharTextarea
           {...register("solution")}
           id="solution" rows={4} maxLength={600} currentLength={solution.length}
-          placeholder="Your approach, the key insight, and why it works when others haven't."
+          placeholder="Your approach, the key insight, why it works now"
           valid={touchedFields.solution && !errors.solution && solution.length > 30}
         />
       </Field>
@@ -693,7 +693,7 @@ function Step2({ form }: { form: FormInstance }) {
         <StyledInput
           {...register("marketSize")}
           id="marketSize"
-          placeholder="e.g. $50B TAM · $8B SAM · $400M SOM, growing 20% YoY"
+          placeholder="$50B TAM · $8B SAM · $400M SOM, 20% YoY"
           valid={touchedFields.marketSize && !errors.marketSize && marketSize.length > 0}
         />
         <div style={{ marginTop: "6px", display: "flex", gap: "5px" }}>
@@ -730,7 +730,7 @@ function Step3({ form }: { form: FormInstance }) {
         <CharTextarea
           {...register("keyMetrics")}
           id="keyMetrics" rows={4} maxLength={500} currentLength={keyMetrics.length}
-          placeholder="e.g. $1.2M ARR · 500 customers · 92% NRR · 15% MoM growth"
+          placeholder="$1.2M ARR · 500 customers · 92% NRR · 15% MoM"
           valid={touchedFields.keyMetrics && !errors.keyMetrics && keyMetrics.length > 10}
         />
         <QuickChips chips={METRIC_CHIPS} onSelect={appendMetric} />
@@ -760,7 +760,7 @@ function Step3({ form }: { form: FormInstance }) {
         hint="Optional — brand names that signal market trust."
         error={errors.notableCustomers?.message}
       >
-        <StyledInput {...register("notableCustomers")} id="notableCustomers" placeholder="e.g. Goldman Sachs, Mayo Clinic, Shopify" />
+        <StyledInput {...register("notableCustomers")} id="notableCustomers" placeholder="Goldman Sachs, Mayo Clinic, Shopify…" />
       </Field>
     </StaggeredFields>
   );
@@ -901,7 +901,7 @@ function TeamMemberRow({ index, form, onRemove, expanded, onToggle, showRemove, 
                   id={bioId}
                   rows={2}
                   maxLength={BIO_MAX}
-                  placeholder="Prior experience, relevant wins, why this person…"
+                  placeholder="Prior wins, relevant experience, why they're the one…"
                   valid={!teamErrors?.[index]?.bio && bio.length >= 10}
                 />
                 <div style={{ position: "absolute", bottom: "8px", right: "10px", fontSize: "10px", color: bio.length > BIO_MAX * 0.85 ? (bio.length >= BIO_MAX ? "#dc2626" : "#f59e0b") : "#b0b5b0", fontFamily: "var(--font-af)", pointerEvents: "none", fontVariantNumeric: "tabular-nums" }}>
@@ -1352,7 +1352,7 @@ function TagInput({ value, onChange }: { value: string; onChange: (v: string) =>
         id="investor-tag-input"
         type="text"
         value={input}
-        placeholder={tags.length ? "" : "YC W23, Sequoia seed… press Enter to add"}
+        placeholder={tags.length ? "" : "YC W23, Sequoia seed… Enter to add"}
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         onBlur={() => { if (input.trim()) addTag(input); }}
