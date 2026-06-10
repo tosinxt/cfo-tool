@@ -77,7 +77,7 @@ export default function ConfirmedContent() {
   return (
     <main
       style={{
-        position: "relative", minHeight: "100dvh",
+        position: "relative", minHeight: "100svh",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: "64px 24px",
@@ -91,9 +91,9 @@ export default function ConfirmedContent() {
         colorMid="#d4e8d4"
         colorTop="#e8e4f0"
         speed={1.2}
-        height="100vh"
+        height="100dvh"
         className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: 0, width: "100vw", height: "100vh" }}
+        style={{ position: "fixed", inset: 0, zIndex: 0, width: "100vw", height: "100dvh" }}
       />
 
       <style>{`

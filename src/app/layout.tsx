@@ -22,9 +22,45 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Caldera CFO",
+  title: {
+    default: "PitchReady — Investor-Ready Series A Pitch Decks",
+    template: "%s | PitchReady",
+  },
   description:
-    "Financial command center for rollup teams and token treasuries — settling every chain onto one ledger.",
+    "Get a CFO-reviewed, investor-ready Series A pitch deck and written report in 5–7 business days. Built from your intake, refined by a seasoned CFO.",
+  keywords: [
+    "Series A pitch deck",
+    "investor pitch deck",
+    "CFO pitch review",
+    "startup fundraising",
+    "Series A fundraising",
+    "pitch deck service",
+    "investor ready deck",
+  ],
+  authors: [{ name: "PitchReady" }],
+  creator: "PitchReady",
+  metadataBase: new URL("https://cfo-tool-five.vercel.app"),
+  openGraph: {
+    type: "website",
+    siteName: "PitchReady",
+    title: "PitchReady — Investor-Ready Series A Pitch Decks",
+    description:
+      "CFO-reviewed pitch deck and written report in 5–7 business days. No calls. No back-and-forth.",
+    url: "https://cfo-tool-five.vercel.app",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "PitchReady — Investor-Ready Series A Pitch Decks",
+    description:
+      "CFO-reviewed pitch deck and written report in 5–7 business days. No calls. No back-and-forth.",
+    creator: "@pitchready",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
 };
 
 export default function RootLayout({

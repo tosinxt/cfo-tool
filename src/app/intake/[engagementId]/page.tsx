@@ -5,8 +5,9 @@ import { DEMO_MODE, DEMO_ENGAGEMENT_ID, DEMO_TOKEN } from "@/lib/demo";
 import Cloudscape from "@/components/forgeui/cloudscape";
 
 export const metadata: Metadata = {
-  title: "Intake Form — Series A Pitch Tool",
+  title: "Your Intake Form",
   description: "Complete your intake form so we can build your investor-ready Series A pitch deck.",
+  robots: { index: false, follow: false },
 };
 
 interface Props {
@@ -65,9 +66,9 @@ function GateError({ message }: { message: string }) {
         colorMid="#d4e8d4"
         colorTop="#e8e4f0"
         speed={1.2}
-        height="100vh"
+        height="100dvh"
         className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100vh" }}
+        style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100dvh" }}
       />
       <div className="relative w-full max-w-[400px] text-center">
         {/* Brand */}

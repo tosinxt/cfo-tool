@@ -223,11 +223,11 @@ function InputGroupWithSuffix({ suffix, children }: { suffix: string; children: 
 // ─── Slider input ─────────────────────────────────────────────────────────────
 
 const sliderCss = `
-.pr-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 9999px; outline: none; cursor: pointer; background: transparent; }
-.pr-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: white; border: 2px solid var(--color-hudson-blue); box-shadow: 0 1px 4px rgba(0,0,0,0.18); cursor: grab; transition: transform 0.1s, box-shadow 0.1s; }
-.pr-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.18); box-shadow: 0 2px 8px rgba(0,129,192,0.28); }
-.pr-slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: white; border: 2px solid var(--color-hudson-blue); box-shadow: 0 1px 4px rgba(0,0,0,0.18); cursor: grab; }
-.pr-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(0,129,192,0.22); }
+.pr-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 9999px; outline: none; cursor: pointer; background: transparent; touch-action: pan-y; }
+.pr-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: white; border: 2px solid var(--color-hudson-blue); box-shadow: 0 2px 6px rgba(0,129,192,0.22), 0 1px 3px rgba(0,0,0,0.12); cursor: grab; transition: transform 0.1s, box-shadow 0.1s; }
+.pr-slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); box-shadow: 0 3px 10px rgba(0,129,192,0.32); }
+.pr-slider::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: white; border: 2px solid var(--color-hudson-blue); box-shadow: 0 2px 6px rgba(0,129,192,0.22); cursor: grab; }
+.pr-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(0,129,192,0.22); }
 `;
 
 type SliderInputProps = {
@@ -753,6 +753,25 @@ function Step3({ form }: { form: FormInstance }) {
             valid={touchedFields.growthRate && !errors.growthRate && growthRate.length > 0}
           />
         </div>
+        {/* Benchmark band */}
+        {(() => {
+          const n = parseFloat(growthRate);
+          if (isNaN(n) || growthRate === "") return null;
+          const label = n >= 200 ? { text: "Hypergrowth", color: "#7c3aed", bg: "rgba(124,58,237,0.07)", border: "rgba(124,58,237,0.2)" }
+            : n >= 100 ? { text: "Top decile", color: "#0081c0", bg: "rgba(0,129,192,0.07)", border: "rgba(0,129,192,0.2)" }
+            : n >= 20 ? { text: "Strong growth", color: "#22c55e", bg: "rgba(34,197,94,0.07)", border: "rgba(34,197,94,0.2)" }
+            : n >= 5 ? { text: "Moderate growth", color: "#f59e0b", bg: "rgba(245,158,11,0.07)", border: "rgba(245,158,11,0.2)" }
+            : { text: "Below benchmark", color: "#9ca39c", bg: "rgba(0,0,0,0.04)", border: "rgba(0,0,0,0.1)" };
+          return (
+            <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", borderRadius: "50px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-af)", color: label.color, background: label.bg, border: `1px solid ${label.border}`, transition: "all 200ms" }}>
+                <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: label.color, flexShrink: 0 }} />
+                {label.text}
+              </span>
+              <span style={{ fontSize: "11px", color: "#9ca39c", fontFamily: "var(--font-af)" }}>Series A benchmark: 15–30% MoM</span>
+            </div>
+          );
+        })()}
       </Field>
 
       <Field
@@ -1523,13 +1542,13 @@ export default function IntakeForm({ engagementId, token }: Props) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="relative min-h-screen px-4 pb-28 pt-8 sm:px-8 sm:pt-14"
+      className="relative min-h-dvh px-4 pb-28 pt-8 sm:px-8 sm:pt-14"
       style={{ fontFamily: "var(--font-af)", "--color-fog": "#7a807a", "--color-steel": "#4a4a4a" } as React.CSSProperties}
     >
       <Cloudscape
-        colorBottom="#a8c8e8" colorMid="#d4e8d4" colorTop="#e8e4f0" speed={1.2} height="100vh"
+        colorBottom="#a8c8e8" colorMid="#d4e8d4" colorTop="#e8e4f0" speed={1.2} height="100dvh"
         className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100vh" }}
+        style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100dvh" }}
       />
 
       <div className="relative mx-auto w-full max-w-[560px]">
