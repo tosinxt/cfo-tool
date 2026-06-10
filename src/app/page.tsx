@@ -10,11 +10,17 @@ import { CalderaCards } from "@/components/caldera/cards";
 import { CalderaCTA } from "@/components/caldera/cta";
 import { CalderaFooter } from "@/components/caldera/footer";
 
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 export default function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleGetStarted() {
+    if (DEMO_MODE) {
+      window.location.href = "/intake/demo-engagement-001?token=demo-token-insecure";
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
