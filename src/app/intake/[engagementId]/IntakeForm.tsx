@@ -1407,16 +1407,48 @@ function Step5({ form }: { form: FormInstance }) {
 
 // ─── Amount quick-select chips ────────────────────────────────────────────────
 
-function AmountChips({ amounts, onSelect }: { amounts: string[]; onSelect: (v: string) => void }) {
+function parseAmount(label: string): string {
+  const s = label.replace(/^\$/, "").trim();
+  if (/K$/i.test(s)) return String(parseFloat(s) * 1_000);
+  if (/M$/i.test(s)) return String(parseFloat(s) * 1_000_000);
+  if (/B$/i.test(s)) return String(parseFloat(s) * 1_000_000_000);
+  return s.replace(/[^0-9.]/g, "");
+}
+
+function AmountChips({ amounts, currentValue, inputId, onSelect }: {
+  amounts: string[]; currentValue?: string; inputId?: string; onSelect: (v: string) => void;
+}) {
+  const parsedAmounts = amounts.map(a => ({ label: a, value: parseAmount(a) }));
+  const isCustom = (currentValue ?? "").length > 0 && !parsedAmounts.some(p => p.value === currentValue);
+
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
-      {amounts.map(a => (
-        <button key={a} type="button" onClick={() => onSelect(a.replace(/[^0-9]/g, ""))}
-          style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-iron)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
-          onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; }}
-          onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; }}
-        >{a}</button>
-      ))}
+      {parsedAmounts.map(({ label, value }) => {
+        const active = currentValue === value;
+        return (
+          <button key={label} type="button" onClick={() => onSelect(value)}
+            style={{
+              padding: "4px 10px", borderRadius: "50px", fontSize: "11px",
+              fontFamily: "var(--font-af)", fontWeight: active ? 600 : 500, cursor: "pointer", transition: "all 140ms",
+              color: active ? "var(--color-hudson-blue)" : "var(--color-iron)",
+              border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #c4c9c4",
+              background: active ? "rgba(0,129,192,0.08)" : "transparent",
+            }}
+            onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; } }}
+            onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; } }}
+          >{label}</button>
+        );
+      })}
+      <button type="button"
+        style={{
+          padding: "4px 10px", borderRadius: "50px", fontSize: "11px",
+          fontFamily: "var(--font-af)", fontWeight: isCustom ? 600 : 500, cursor: "pointer", transition: "all 140ms",
+          color: isCustom ? "var(--color-hudson-blue)" : "var(--color-iron)",
+          border: isCustom ? "1.5px solid var(--color-hudson-blue)" : "1px solid #c4c9c4",
+          background: isCustom ? "rgba(0,129,192,0.08)" : "transparent",
+        }}
+        onClick={() => inputId && document.getElementById(inputId)?.focus()}
+      >Other</button>
     </div>
   );
 }
@@ -1608,7 +1640,7 @@ function Step6({ form }: { form: FormInstance }) {
               style={{ paddingLeft: "24px" }}
             />
           </InputAdornment>
-          <AmountChips amounts={["$500K", "$1M", "$2M", "$5M", "$10M", "$20M"]} onSelect={v => { setValue("raiseAmount", v, { shouldValidate: true, shouldTouch: true }); }} />
+          <AmountChips amounts={["$500K", "$1M", "$2M", "$5M", "$10M", "$20M"]} currentValue={raiseAmount} inputId="raiseAmount" onSelect={v => { setValue("raiseAmount", v, { shouldValidate: true, shouldTouch: true }); }} />
         </Field>
         <Field label="Pre-money valuation" htmlFor="valuationExpectation" error={errors.valuationExpectation?.message} required
           why="Valuation sets the terms conversation. State your expectation clearly — investors appreciate directness."
@@ -1619,7 +1651,7 @@ function Step6({ form }: { form: FormInstance }) {
               style={{ paddingLeft: "24px" }}
             />
           </InputAdornment>
-          <AmountChips amounts={["$5M", "$10M", "$20M", "$50M", "$100M"]} onSelect={v => { setValue("valuationExpectation", v, { shouldValidate: true, shouldTouch: true }); }} />
+          <AmountChips amounts={["$5M", "$10M", "$20M", "$50M", "$100M"]} currentValue={valuation} inputId="valuationExpectation" onSelect={v => { setValue("valuationExpectation", v, { shouldValidate: true, shouldTouch: true }); }} />
         </Field>
       </div>
 
