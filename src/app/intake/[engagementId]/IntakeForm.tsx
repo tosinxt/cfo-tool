@@ -1744,7 +1744,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
         throw new Error(error ?? "Submission failed");
       }
       localStorage.removeItem(STORAGE_KEY(engagementId));
-      router.push(`/intake/${engagementId}/confirmed`);
+      router.push(`/deck/${engagementId}?token=${encodeURIComponent(token)}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong");
       setSubmitting(false);
