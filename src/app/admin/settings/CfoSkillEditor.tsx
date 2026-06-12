@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 export function CfoSkillEditor() {
@@ -9,6 +9,18 @@ export function CfoSkillEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    autoResize();
+  }, [addendum, autoResize]);
 
   useEffect(() => {
     fetch("/api/admin/cfo-skill")
@@ -83,14 +95,14 @@ export function CfoSkillEditor() {
             </div>
           ) : (
             <textarea
+              ref={textareaRef}
               value={addendum}
               onChange={(e) => setAddendum(e.target.value)}
-              rows={18}
               maxLength={8000}
               placeholder={
                 "e.g.\n- I always push founders to anchor market size on a specific regulatory change or technology cost curve shift.\n- My signature move: reframe the 'use of funds' slide as 'the 18-month sprint plan' with named hires and milestone gates.\n- Flag any NRR below 100% as a deal-breaker that must be addressed head-on, not buried."
               }
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full min-h-[18rem] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden"
             />
           )}
 

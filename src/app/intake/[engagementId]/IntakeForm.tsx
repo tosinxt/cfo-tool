@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import Cloudscape from "@/components/forgeui/cloudscape";
 import { AnimatedCheckmarkCircle } from "@/components/forgeui/animated-form";
@@ -156,7 +156,7 @@ function Field({
         {why && <WhyHint text={why} />}
       </div>
       {hint && (
-        <p className="text-[12px]" style={{ color: "#9ca39c", fontFamily: "var(--font-af)", lineHeight: 1.5 }}>
+        <p className="text-[12px]" style={{ color: "#5a5f5a", fontFamily: "var(--font-af)", lineHeight: 1.5 }}>
           {hint}
         </p>
       )}
@@ -211,7 +211,7 @@ function InputGroupWithSuffix({ suffix, children }: { suffix: string; children: 
         border: `1px solid ${borderColor}`,
         borderLeft: "none",
         borderTopRightRadius: "6px", borderBottomRightRadius: "6px",
-        color: "var(--color-steel)", fontSize: "13px",
+        color: "var(--color-iron)", fontSize: "13px",
         fontFamily: "var(--font-af)", whiteSpace: "nowrap",
         userSelect: "none", flexShrink: 0,
         transition: "border-color 0.15s",
@@ -287,7 +287,7 @@ function SliderInput({ value, onChange, onBlur, min, max, step = 1, unit, ticks,
             background: "rgba(248,249,248,0.95)",
             border: `1px solid ${focused ? "var(--color-hudson-blue)" : valid ? "#22c55e" : "#b8bdb8"}`,
             borderLeft: "none", borderTopRightRadius: "6px", borderBottomRightRadius: "6px",
-            color: "var(--color-steel)", fontSize: "13px", fontFamily: "var(--font-af)",
+            color: "var(--color-iron)", fontSize: "13px", fontFamily: "var(--font-af)",
             whiteSpace: "nowrap", flexShrink: 0, transition: "border-color 0.15s",
           }}>{unit}</span>
         )}
@@ -333,7 +333,7 @@ function InputAdornment({ prefix, suffix, children }: { prefix?: string; suffix?
     <div style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
       <span style={{
         position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)",
-        color: "var(--color-steel)", fontSize: "14px", fontFamily: "var(--font-af)", pointerEvents: "none", zIndex: 1,
+        color: "var(--color-iron)", fontSize: "14px", fontFamily: "var(--font-af)", pointerEvents: "none", zIndex: 1,
       }}>{prefix}</span>
       <div style={{ flex: 1 }}>
         {React.isValidElement(children)
@@ -386,21 +386,42 @@ const StyledInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes
 );
 
 const StyledTextarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement> & { valid?: boolean }>(
-  function StyledTextarea({ valid, ...props }, ref) {
+  function StyledTextarea({ valid, ...props }, forwardedRef) {
     const [focused, setFocused] = useState(false);
+    const innerRef = useRef<HTMLTextAreaElement>(null);
+
+    const setRefs = useCallback((el: HTMLTextAreaElement | null) => {
+      (innerRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+      if (typeof forwardedRef === "function") forwardedRef(el);
+      else if (forwardedRef) forwardedRef.current = el;
+    }, [forwardedRef]);
+
+    const autoResize = useCallback(() => {
+      const el = innerRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }, []);
+
+    useEffect(() => { autoResize(); }, [props.value, autoResize]);
+
     return (
       <textarea
         {...props}
-        ref={ref}
+        ref={setRefs}
         style={{
           ...inputBase,
+          height: undefined,
+          minHeight: "80px",
           ...props.style,
           resize: "none",
+          overflow: "hidden",
           borderColor: focused ? "var(--color-hudson-blue)" : valid ? "#22c55e" : "#b8bdb8",
           boxShadow: focused ? "0 0 0 3px rgba(0,129,192,0.10)" : valid ? "0 0 0 3px rgba(34,197,94,0.08)" : "none",
         }}
         onFocus={(e) => { setFocused(true); props.onFocus?.(e); }}
         onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
+        onChange={(e) => { props.onChange?.(e); autoResize(); }}
       />
     );
   }
@@ -448,7 +469,7 @@ function CharRing({ current, max }: { current: number; max: number }) {
           style={{ strokeLinecap: "round" }}
         />
       </svg>
-      <span style={{ fontSize: "11px", fontFamily: "var(--font-af)", color: over ? "#dc2626" : "#9ca39c", fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontSize: "11px", fontFamily: "var(--font-af)", color: over ? "#dc2626" : "#5a5f5a", fontVariantNumeric: "tabular-nums" }}>
         {current}/{max}
       </span>
     </div>
@@ -478,7 +499,7 @@ function QuickChips({ chips, onSelect }: { chips: string[]; onSelect: (chip: str
           key={chip} type="button" onClick={() => onSelect(chip)}
           style={{
             padding: "6px 12px", borderRadius: "50px", fontSize: "12px",
-            fontFamily: "var(--font-af)", color: "var(--color-steel)",
+            fontFamily: "var(--font-af)", color: "var(--color-iron)",
             border: "1px solid #b0b5b0", background: "transparent", cursor: "pointer",
             transition: "color 150ms, border-color 150ms, background 150ms",
             minHeight: "32px",
@@ -491,7 +512,7 @@ function QuickChips({ chips, onSelect }: { chips: string[]; onSelect: (chip: str
           }}
           onMouseLeave={(e) => {
             const el = e.currentTarget as HTMLButtonElement;
-            el.style.color = "var(--color-steel)";
+            el.style.color = "var(--color-iron)";
             el.style.borderColor = "#b0b5b0";
             el.style.background = "transparent";
           }}
@@ -499,6 +520,185 @@ function QuickChips({ chips, onSelect }: { chips: string[]; onSelect: (chip: str
           {chip}
         </button>
       ))}
+    </div>
+  );
+}
+
+// ─── PillSelect: chip grid + "Other" reveals text input ──────────────────────
+
+function PillSelect({
+  chips, value, onChange, placeholder, id, valid,
+}: {
+  chips: string[]; value: string; onChange: (v: string) => void;
+  placeholder?: string; id?: string; valid?: boolean;
+}) {
+  const isOther = value.length > 0 && !chips.includes(value);
+  const [showOther, setShowOther] = useState(isOther);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showOther) inputRef.current?.focus();
+  }, [showOther]);
+
+  function selectChip(chip: string) {
+    setShowOther(false);
+    onChange(chip);
+  }
+
+  function openOther() {
+    setShowOther(true);
+    onChange("");
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        {chips.map((chip) => {
+          const active = value === chip && !showOther;
+          return (
+            <button
+              key={chip} type="button" onClick={() => selectChip(chip)}
+              style={{
+                padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
+                fontFamily: "var(--font-af)", cursor: "pointer",
+                transition: "all 150ms",
+                fontWeight: active ? 600 : 400,
+                color: active ? "var(--color-hudson-blue)" : "var(--color-steel)",
+                border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
+                background: active ? "rgba(0,129,192,0.08)" : "transparent",
+                minHeight: "36px",
+              }}
+            >
+              {chip}
+            </button>
+          );
+        })}
+        <button
+          type="button" onClick={openOther}
+          style={{
+            padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
+            fontFamily: "var(--font-af)", cursor: "pointer",
+            transition: "all 150ms",
+            fontWeight: showOther ? 600 : 400,
+            color: showOther ? "var(--color-hudson-blue)" : "var(--color-steel)",
+            border: showOther ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
+            background: showOther ? "rgba(0,129,192,0.08)" : "transparent",
+            minHeight: "36px",
+          }}
+        >
+          Other
+        </button>
+      </div>
+      <AnimatePresence>
+        {showOther && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            style={{ overflow: "hidden" }}
+          >
+            <input
+              ref={inputRef}
+              id={id}
+              type="text"
+              value={value}
+              placeholder={placeholder ?? "Type your answer…"}
+              onChange={(e) => onChange(e.target.value)}
+              style={{
+                ...inputBase,
+                borderColor: valid ? "#22c55e" : "var(--color-hudson-blue)",
+                boxShadow: valid ? "0 0 0 3px rgba(34,197,94,0.08)" : "0 0 0 3px rgba(0,129,192,0.10)",
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── SliderPreset: preset pills + "Other" reveals slider ─────────────────────
+
+function SliderPreset({
+  presets, sliderProps, value, onChange, onBlur, valid,
+}: {
+  presets: { label: string; value: string }[];
+  sliderProps: Omit<SliderInputProps, "value" | "onChange" | "onBlur" | "valid">;
+  value: string; onChange: (v: string) => void; onBlur?: () => void; valid?: boolean;
+}) {
+  const isPreset = presets.some((p) => p.value === value);
+  const [showSlider, setShowSlider] = useState(!isPreset && value.length > 0);
+
+  function selectPreset(v: string) {
+    setShowSlider(false);
+    onChange(v);
+    onBlur?.();
+  }
+
+  function openSlider() {
+    setShowSlider(true);
+    onChange("");
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        {presets.map((p) => {
+          const active = value === p.value && !showSlider;
+          return (
+            <button
+              key={p.value} type="button" onClick={() => selectPreset(p.value)}
+              style={{
+                padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
+                fontFamily: "var(--font-af)", cursor: "pointer",
+                transition: "all 150ms",
+                fontWeight: active ? 600 : 400,
+                color: active ? "var(--color-hudson-blue)" : "var(--color-steel)",
+                border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
+                background: active ? "rgba(0,129,192,0.08)" : "transparent",
+                minHeight: "36px",
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+        <button
+          type="button" onClick={openSlider}
+          style={{
+            padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
+            fontFamily: "var(--font-af)", cursor: "pointer",
+            transition: "all 150ms",
+            fontWeight: showSlider ? 600 : 400,
+            color: showSlider ? "var(--color-hudson-blue)" : "var(--color-steel)",
+            border: showSlider ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
+            background: showSlider ? "rgba(0,129,192,0.08)" : "transparent",
+            minHeight: "36px",
+          }}
+        >
+          Other
+        </button>
+      </div>
+      <AnimatePresence>
+        {showSlider && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            style={{ overflow: "hidden" }}
+          >
+            <SliderInput
+              {...sliderProps}
+              value={value}
+              onChange={onChange}
+              onBlur={onBlur}
+              valid={valid}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -525,7 +725,7 @@ function RadioPills({ name, form, options, error }: {
                 transition: "all 180ms ease", minHeight: "44px",
               }}
               onMouseEnter={(e) => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-iron)"; el.style.color = "var(--color-ink)"; } }}
-              onMouseLeave={(e) => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c0c5c0"; el.style.color = "var(--color-steel)"; } }}
+              onMouseLeave={(e) => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c0c5c0"; el.style.color = "var(--color-iron)"; } }}
             >
               {opt.label}
             </button>
@@ -631,12 +831,14 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
       </Field>
 
       <Field label="Sector" htmlFor="sector" error={errors.sector?.message} required>
-        <StyledInput
-          {...register("sector")}
-          id="sector" placeholder="SaaS, FinTech, HealthTech…"
+        <PillSelect
+          id="sector"
+          chips={SECTOR_CHIPS}
+          value={sector}
+          onChange={(v) => setValue("sector", v, { shouldValidate: true, shouldTouch: true })}
+          placeholder="e.g. AgriTech, LegalTech…"
           valid={touchedFields.sector && !errors.sector && sector.length > 0}
         />
-        <QuickChips chips={SECTOR_CHIPS} onSelect={(chip) => setValue("sector", chip, { shouldValidate: true })} />
       </Field>
 
       <Field label="Current stage" error={errors.stage?.message} required>
@@ -690,20 +892,19 @@ function Step2({ form }: { form: FormInstance }) {
         error={errors.marketSize?.message}
         why="Market size frames the ceiling of the opportunity. Too small = not fundable. Too vague = not credible."
       >
-        <StyledInput
+        <CharTextarea
           {...register("marketSize")}
-          id="marketSize"
-          placeholder="$50B TAM · $8B SAM · $400M SOM, 20% YoY"
+          id="marketSize" rows={3} maxLength={400} currentLength={marketSize.length}
+          placeholder="$50B TAM (total market) · $8B SAM (serviceable) · $400M SOM (obtainable)"
           valid={touchedFields.marketSize && !errors.marketSize && marketSize.length > 0}
         />
-        <div style={{ marginTop: "6px", display: "flex", gap: "5px" }}>
-          {["TAM", "SAM", "SOM"].map((tag) => (
-            <span key={tag} style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "11px", fontFamily: "var(--font-af)", background: "var(--color-linen)", border: "1px solid #c0c5c0", color: "var(--color-fog)" }}>{tag}</span>
-          ))}
-          <span style={{ fontSize: "11px", color: "var(--color-fog)", fontFamily: "var(--font-af)", alignSelf: "center", marginLeft: "2px" }}>
-            Total · Serviceable · Obtainable
-          </span>
-        </div>
+        <QuickChips
+          chips={["TAM: ", "SAM: ", "SOM: "]}
+          onSelect={(chip) => {
+            const current = marketSize.trim();
+            form.setValue("marketSize", current ? `${current}  ${chip}` : chip, { shouldValidate: false });
+          }}
+        />
       </Field>
     </StaggeredFields>
   );
@@ -741,18 +942,21 @@ function Step3({ form }: { form: FormInstance }) {
         hint="MoM, QoQ, or YoY — whichever tells the best story."
         error={errors.growthRate?.message}
       >
-        <div style={{ position: "relative" }}>
-          <SliderInput
-            id="growthRate"
-            value={growthRate}
-            onChange={v => form.setValue("growthRate", v, { shouldValidate: true, shouldTouch: true })}
-            onBlur={() => form.trigger("growthRate")}
-            min={0} max={500} step={5} unit="%"
-            ticks={[0, 50, 100, 200, 300, 500]}
-            placeholder="15"
-            valid={touchedFields.growthRate && !errors.growthRate && growthRate.length > 0}
-          />
-        </div>
+        <SliderPreset
+          presets={[
+            { label: "5%", value: "5" },
+            { label: "15%", value: "15" },
+            { label: "30%", value: "30" },
+            { label: "50%", value: "50" },
+            { label: "100%", value: "100" },
+            { label: "200%+", value: "200" },
+          ]}
+          sliderProps={{ id: "growthRate", min: 0, max: 500, step: 5, unit: "%", ticks: [0, 50, 100, 200, 300, 500], placeholder: "15" }}
+          value={growthRate}
+          onChange={v => form.setValue("growthRate", v, { shouldValidate: true, shouldTouch: true })}
+          onBlur={() => form.trigger("growthRate")}
+          valid={touchedFields.growthRate && !errors.growthRate && growthRate.length > 0}
+        />
         {/* Benchmark band */}
         {(() => {
           const n = parseFloat(growthRate);
@@ -761,14 +965,14 @@ function Step3({ form }: { form: FormInstance }) {
             : n >= 100 ? { text: "Top decile", color: "#0081c0", bg: "rgba(0,129,192,0.07)", border: "rgba(0,129,192,0.2)" }
             : n >= 20 ? { text: "Strong growth", color: "#22c55e", bg: "rgba(34,197,94,0.07)", border: "rgba(34,197,94,0.2)" }
             : n >= 5 ? { text: "Moderate growth", color: "#f59e0b", bg: "rgba(245,158,11,0.07)", border: "rgba(245,158,11,0.2)" }
-            : { text: "Below benchmark", color: "#9ca39c", bg: "rgba(0,0,0,0.04)", border: "rgba(0,0,0,0.1)" };
+            : { text: "Below benchmark", color: "#5a5f5a", bg: "rgba(0,0,0,0.04)", border: "rgba(0,0,0,0.1)" };
           return (
             <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", borderRadius: "50px", fontSize: "11px", fontWeight: 600, fontFamily: "var(--font-af)", color: label.color, background: label.bg, border: `1px solid ${label.border}`, transition: "all 200ms" }}>
                 <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: label.color, flexShrink: 0 }} />
                 {label.text}
               </span>
-              <span style={{ fontSize: "11px", color: "#9ca39c", fontFamily: "var(--font-af)" }}>Series A benchmark: 15–30% MoM</span>
+              <span style={{ fontSize: "11px", color: "#5a5f5a", fontFamily: "var(--font-af)" }}>Series A benchmark: 15–30% MoM</span>
             </div>
           );
         })()}
@@ -861,7 +1065,7 @@ function TeamMemberRow({ index, form, onRemove, expanded, onToggle, showRemove, 
                 {name}
               </div>
               {role && (
-                <div style={{ fontSize: "12px", color: "#9ca39c", fontFamily: "var(--font-af)", marginTop: "1px" }}>{role}</div>
+                <div style={{ fontSize: "12px", color: "#5a5f5a", fontFamily: "var(--font-af)", marginTop: "1px" }}>{role}</div>
               )}
             </>
           ) : (
@@ -887,7 +1091,7 @@ function TeamMemberRow({ index, form, onRemove, expanded, onToggle, showRemove, 
               </svg>
             </span>
           )}
-          <div style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca39c", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.4,0,0.2,1)" }}>
+          <div style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", color: "#5a5f5a", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 220ms cubic-bezier(0.4,0,0.2,1)" }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
             </svg>
@@ -969,7 +1173,7 @@ function Step4({ form, fields, append, remove }: { form: FormInstance; fields: F
 
   return (
     <StaggeredFields>
-      <p className="text-[13px]" style={{ color: "#9ca39c", fontFamily: "var(--font-af)", lineHeight: 1.6 }}>
+      <p className="text-[13px]" style={{ color: "#5a5f5a", fontFamily: "var(--font-af)", lineHeight: 1.6 }}>
         Add the people investors will evaluate — founder, co-founders, and key hires. Name, role, and a brief background per person.
       </p>
       <AnimatePresence initial={false}>
@@ -989,9 +1193,9 @@ function Step4({ form, fields, append, remove }: { form: FormInstance; fields: F
       {fields.length < 6 && (
         <button type="button" onClick={handleAppend}
           className="w-full py-3 text-[13px] font-[500] transition-all"
-          style={{ border: "1.5px dashed #c4c9c4", borderRadius: "10px", color: "#9ca39c", background: "transparent", fontFamily: "var(--font-af)", minHeight: "44px", cursor: "pointer" }}
+          style={{ border: "1.5px dashed #c4c9c4", borderRadius: "10px", color: "#5a5f5a", background: "transparent", fontFamily: "var(--font-af)", minHeight: "44px", cursor: "pointer" }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-hudson-blue)"; (e.currentTarget as HTMLButtonElement).style.color = "var(--color-hudson-blue)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,129,192,0.03)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#c4c9c4"; (e.currentTarget as HTMLButtonElement).style.color = "#9ca39c"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#c4c9c4"; (e.currentTarget as HTMLButtonElement).style.color = "#5a5f5a"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -1060,7 +1264,7 @@ function ProjectionRows({ value, onChange }: { value: string; onChange: (v: stri
         background: "rgba(248,249,248,0.7)",
       }}>
         <span style={{
-          padding: "10px 14px", fontSize: "12px", color: "#9ca39c",
+          padding: "10px 14px", fontSize: "12px", color: "#5a5f5a",
           fontFamily: "var(--font-af)", whiteSpace: "nowrap", borderRight: "1px solid #e0e4e0",
           minWidth: "90px",
         }}>Assumption</span>
@@ -1096,14 +1300,14 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
       {/* Year badge */}
       <span style={{
         padding: "12px 14px", fontSize: "12px", fontWeight: 500,
-        color: hasVal ? "var(--color-hudson-blue)" : "#9ca39c",
+        color: hasVal ? "var(--color-hudson-blue)" : "#5a5f5a",
         fontFamily: "var(--font-af)", whiteSpace: "nowrap",
         borderRight: "1px solid #e0e4e0", minWidth: "60px",
         transition: "color 200ms",
       }}>{year}</span>
 
       {/* $ prefix */}
-      <span style={{ padding: "0 4px 0 12px", color: "var(--color-steel)", fontSize: "14px", fontFamily: "var(--font-af)" }}>$</span>
+      <span style={{ padding: "0 4px 0 12px", color: "var(--color-iron)", fontSize: "14px", fontFamily: "var(--font-af)" }}>$</span>
 
       {/* Amount input */}
       <input
@@ -1168,18 +1372,21 @@ function Step5({ form }: { form: FormInstance }) {
         hint="How many months until you run out of cash at current burn?"
         error={errors.runway?.message}
       >
-        <div style={{ position: "relative" }}>
-          <SliderInput
-            id="runway"
-            value={runway}
-            onChange={v => form.setValue("runway", v, { shouldValidate: true, shouldTouch: true })}
-            onBlur={() => form.trigger("runway")}
-            min={0} max={48} step={1} unit="months"
-            ticks={[0, 6, 12, 18, 24, 36, 48]}
-            placeholder="14"
-            valid={touchedFields.runway && !errors.runway && runway.length > 0}
-          />
-        </div>
+        <SliderPreset
+          presets={[
+            { label: "6 mo", value: "6" },
+            { label: "12 mo", value: "12" },
+            { label: "18 mo", value: "18" },
+            { label: "24 mo", value: "24" },
+            { label: "36 mo", value: "36" },
+            { label: "48 mo", value: "48" },
+          ]}
+          sliderProps={{ id: "runway", min: 0, max: 48, step: 1, unit: "months", ticks: [0, 6, 12, 18, 24, 36, 48], placeholder: "14" }}
+          value={runway}
+          onChange={v => form.setValue("runway", v, { shouldValidate: true, shouldTouch: true })}
+          onBlur={() => form.trigger("runway")}
+          valid={touchedFields.runway && !errors.runway && runway.length > 0}
+        />
       </Field>
 
       <Divider label="forward-looking" />
@@ -1205,9 +1412,9 @@ function AmountChips({ amounts, onSelect }: { amounts: string[]; onSelect: (v: s
     <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
       {amounts.map(a => (
         <button key={a} type="button" onClick={() => onSelect(a.replace(/[^0-9]/g, ""))}
-          style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-steel)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
+          style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-iron)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
           onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; }}
-          onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-steel)"; el.style.background = "transparent"; }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; }}
         >{a}</button>
       ))}
     </div>
@@ -1286,7 +1493,7 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
                 onChange={e => setPct(i, e.target.value.replace(/[^0-9]/g, ""))}
                 style={{ width: "44px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               />
-              <span style={{ fontSize: "13px", color: "#9ca39c", fontFamily: "var(--font-af)" }}>%</span>
+              <span style={{ fontSize: "13px", color: "#5a5f5a", fontFamily: "var(--font-af)" }}>%</span>
             </div>
             {rows.length > 1 && (
               <button type="button" onClick={() => removeRow(i)}
@@ -1304,7 +1511,7 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
 
         {/* Total row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "rgba(0,0,0,0.025)", borderTop: "1px solid #eaece9" }}>
-          <span style={{ fontSize: "11px", color: "#9ca39c", fontFamily: "var(--font-af)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total</span>
+          <span style={{ fontSize: "11px", color: "#5a5f5a", fontFamily: "var(--font-af)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total</span>
           <span style={{ fontSize: "13px", fontWeight: 600, fontFamily: "var(--font-af)", fontVariantNumeric: "tabular-nums", color: totalOk ? "#22c55e" : totalOver ? "#dc2626" : "var(--color-ink)", transition: "color 200ms" }}>
             {total}%{totalOk && " ✓"}
           </span>
@@ -1315,9 +1522,9 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
       <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "8px", alignItems: "center" }}>
         {FUNDS_CHIPS.filter(c => !rows.some(r => r.category.toLowerCase() === c.toLowerCase())).map(chip => (
           <button key={chip} type="button" onClick={() => addRow(chip)}
-            style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-steel)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
+            style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-iron)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; }}
-            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-steel)"; el.style.background = "transparent"; }}
+            onMouseLeave={e => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; }}
           >+ {chip}</button>
         ))}
       </div>
@@ -1543,7 +1750,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="relative min-h-dvh px-4 pb-28 pt-8 sm:px-8 sm:pt-14"
-      style={{ fontFamily: "var(--font-af)", "--color-fog": "#7a807a", "--color-steel": "#4a4a4a" } as React.CSSProperties}
+      style={{ fontFamily: "var(--font-af)", "--color-fog": "#3d4438", "--color-steel": "#2d3028" } as React.CSSProperties}
     >
       <Cloudscape
         colorBottom="#a8c8e8" colorMid="#d4e8d4" colorTop="#e8e4f0" speed={1.2} height="100dvh"
@@ -1573,7 +1780,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
 
         {/* Step heading */}
         <div className="mb-6">
-          <p className="mb-1.5 text-[11px] font-[600] uppercase tracking-[0.14em]" style={{ color: "var(--color-steel)" }}>
+          <p className="mb-1.5 text-[11px] font-[600] uppercase tracking-[0.14em]" style={{ color: "var(--color-iron)" }}>
             Step {step + 1} of {STEPS.length}
           </p>
           <AnimatePresence mode="wait" custom={direction}>
@@ -1602,8 +1809,8 @@ export default function IntakeForm({ engagementId, token }: Props) {
                 whiteSpace: "nowrap",
                 fontWeight: i === step ? 500 : 400,
                 background: i === step ? "var(--color-ink)" : completedSteps.has(i) ? "rgba(0,129,192,0.06)" : "transparent",
-                color: i === step ? "white" : completedSteps.has(i) ? "var(--color-hudson-blue)" : "#9ca39c",
-                border: i === step ? "none" : completedSteps.has(i) ? "1px solid rgba(0,129,192,0.22)" : "1px solid rgba(0,0,0,0.12)",
+                color: i === step ? "white" : completedSteps.has(i) ? "var(--color-hudson-blue)" : "#3d4438",
+                border: i === step ? "none" : completedSteps.has(i) ? "1px solid rgba(0,129,192,0.35)" : "1px solid rgba(0,0,0,0.28)",
                 boxShadow: i === step ? "0 2px 8px rgba(0,0,0,0.18), 0 1px 2px rgba(0,0,0,0.12)" : "none",
                 transition: "all 200ms",
               }}
@@ -1719,13 +1926,13 @@ export default function IntakeForm({ engagementId, token }: Props) {
         {/* Autosave notice */}
         <motion.p
           className="mt-4 text-center text-[12px]"
-          animate={{ opacity: justSaved ? 1 : 0.55, scale: justSaved ? 1.02 : 1 }}
+          animate={{ opacity: justSaved ? 1 : 0.85, scale: justSaved ? 1.02 : 1 }}
           transition={{ duration: 0.3 }}
           style={{ color: "var(--color-fog)", display: "flex", alignItems: "center", justifyContent: "center", gap: "5px" }}
         >
           <motion.svg
             width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            animate={{ color: justSaved ? "#22c55e" : "#9ca39c" }}
+            animate={{ color: justSaved ? "#22c55e" : "#3d4438" }}
             transition={{ duration: 0.3 }}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
