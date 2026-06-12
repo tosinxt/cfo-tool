@@ -1917,7 +1917,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
                 background: step === STEPS.length - 1 ? "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)" : "var(--color-obsidian)",
                 minHeight: step === STEPS.length - 1 ? "52px" : "48px",
                 touchAction: "manipulation",
-                fontSize: step === STEPS.length - 1 ? "15px" : "14px",
+                fontSize: step === STEPS.length - 1 ? "13px" : "14px",
                 fontWeight: step === STEPS.length - 1 ? 600 : 500,
                 letterSpacing: step === STEPS.length - 1 ? "-0.01em" : "0",
                 cursor: submitting ? "wait" : "pointer",
@@ -1944,11 +1944,11 @@ export default function IntakeForm({ engagementId, token }: Props) {
                   Sending your intake…
                 </span>
               ) : step === STEPS.length - 1 ? (
-                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", whiteSpace: "nowrap" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  Submit intake — we'll start your deck
+                  Submit — we'll build your deck
                 </span>
               ) : "Continue →"}
             </button>
