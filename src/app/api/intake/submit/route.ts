@@ -19,6 +19,8 @@ const bodySchema = z.object({
   engagementId: z.string().min(1),
   token: z.string().min(1),
   // Minimums match the client-side Zod schemas in schemas.ts
+  clientName: z.string().min(1),
+  clientEmail: z.string().min(1).email(),
   companyName: z.string().min(1),
   oneLiner: z.string().min(10).max(200),
   sector: z.string().min(1),
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { engagementId, token, ...intakeFields } = parsed.data;
+  const { engagementId, token, clientName, clientEmail, ...intakeFields } = parsed.data;
 
   // Demo mode: skip all Firebase/email/AI work
   if (DEMO_MODE) {
@@ -103,6 +105,10 @@ export async function POST(req: NextRequest) {
   }
 
   await docRef.update({
+    // The free-checkout path leaves these blank at engagement creation (no Stripe
+    // checkout to collect them from), so the intake form is the source of truth here.
+    clientName,
+    clientEmail,
     intake: {
       ...intakeFields,
       submittedAt: FieldValue.serverTimestamp(),
@@ -115,7 +121,7 @@ export async function POST(req: NextRequest) {
   if (!DEMO_MODE) {
     // Fire emails — don't fail the request if they error
     await Promise.allSettled([
-      sendClientConfirmation(engagementData.clientEmail, engagementId),
+      sendClientConfirmation(clientEmail, engagementId),
       sendAdminNotification(engagementId, intakeFields.companyName),
     ]);
 

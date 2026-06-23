@@ -17,10 +17,10 @@ export function StatusBreakdown({ counts }: { counts: Record<EngagementStatus, n
               <span className="text-[12px] text-gray-600 w-[120px] shrink-0 truncate">
                 {STATUS_LABEL[status]}
               </span>
-              <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="flex-1 h-2.5 rounded-full bg-gray-200 overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-hudson-blue/70"
-                  style={{ width: `${(count / max) * 100}%` }}
+                  className="h-full rounded-full bg-hudson-blue min-w-[3px] transition-[width]"
+                  style={{ width: count > 0 ? `${Math.max((count / max) * 100, 4)}%` : "0%" }}
                 />
               </div>
               <span className="font-mono [font-variant-numeric:tabular-nums] text-[12px] text-gray-500 w-[42px] text-right shrink-0">

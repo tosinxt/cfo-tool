@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const step1Schema = z.object({
+  clientName: z.string().min(1, "Your name is required"),
+  clientEmail: z.string().min(1, "Your email is required").email("Enter a valid email"),
   companyName: z.string().min(1, "Company name is required"),
   oneLiner: z.string().min(10, "Please write at least 10 characters").max(200),
   sector: z.string().min(1, "Sector is required"),

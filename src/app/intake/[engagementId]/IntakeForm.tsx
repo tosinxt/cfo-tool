@@ -802,9 +802,35 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
   const oneLiner = (useWatch({ control: form.control, name: "oneLiner" }) as string) || "";
   const companyName = (useWatch({ control: form.control, name: "companyName" }) as string) || "";
   const sector = (useWatch({ control: form.control, name: "sector" }) as string) || "";
+  const clientName = (useWatch({ control: form.control, name: "clientName" }) as string) || "";
+  const clientEmail = (useWatch({ control: form.control, name: "clientEmail" }) as string) || "";
 
   return (
     <StaggeredFields>
+      <Field label="Your name" htmlFor="clientName" error={errors.clientName?.message} required>
+        <StyledInput
+          {...register("clientName")}
+          id="clientName"
+          placeholder="Jane Founder"
+          autoComplete="name"
+          valid={touchedFields.clientName && !errors.clientName && clientName.length > 0}
+          style={{ fontSize: "16px", fontWeight: 500, letterSpacing: "-0.2px" }}
+        />
+      </Field>
+
+      <Field label="Your email" htmlFor="clientEmail" error={errors.clientEmail?.message} required
+        hint="We'll send your draft and updates here.">
+        <StyledInput
+          {...register("clientEmail")}
+          id="clientEmail"
+          type="email"
+          placeholder="jane@acme.com"
+          autoComplete="email"
+          valid={touchedFields.clientEmail && !errors.clientEmail && clientEmail.length > 0}
+          style={{ fontSize: "16px", fontWeight: 500, letterSpacing: "-0.2px" }}
+        />
+      </Field>
+
       <Field label="Company name" htmlFor="companyName" error={errors.companyName?.message} required>
         <StyledInput
           {...register("companyName")}
@@ -1703,6 +1729,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
     resolver: zodResolver(stepSchemas[step]) as any,
     mode: "onBlur",
     defaultValues: {
+      clientName: "", clientEmail: "",
       companyName: "", oneLiner: "", sector: "", stage: undefined,
       problem: "", solution: "", marketSize: "",
       keyMetrics: "", growthRate: "", notableCustomers: "",
