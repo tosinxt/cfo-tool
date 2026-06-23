@@ -4,7 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { verifyAdminForApi } from "@/lib/auth/verifyAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { generateDraft } from "@/lib/ai/generateDraft";
-import { DraftGenerationError } from "@/lib/ai/types";
+import { DraftGenerationError, DRAFT_STAGES, type DraftStageId } from "@/lib/ai/types";
 import type { Engagement } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -59,18 +59,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Idempotency: skip if already generated or currently in progress
+  // Idempotency: skip if already generated, or a pipeline run is already in
+  // progress for this engagement (status flips to "drafting" by the caller
+  // *before* this endpoint runs, so "drafting" alone isn't a signal that the
+  // pipeline has actually started — draftProgress is).
   if (
-    engagement.status === "drafting" ||
     engagement.status === "ready_for_review" ||
     engagement.status === "approved" ||
-    engagement.status === "delivered"
+    engagement.status === "delivered" ||
+    (engagement.status === "drafting" && engagement.draftProgress)
   ) {
     return NextResponse.json({ success: true, skipped: true });
   }
 
   try {
-    const draft = await generateDraft(engagement);
+    const draft = await generateDraft(engagement, async (stage: DraftStageId) => {
+      const stageIndex = DRAFT_STAGES.findIndex((s) => s.id === stage);
+      await docRef
+        .update({
+          draftProgress: {
+            stage,
+            stageIndex,
+            totalStages: DRAFT_STAGES.length,
+            label: DRAFT_STAGES[stageIndex].label,
+            updatedAt: new Date().toISOString(),
+          },
+        })
+        .catch(() => {});
+    });
 
     await docRef.update({
       aiDraft: draft,
@@ -80,7 +96,10 @@ export async function POST(req: NextRequest) {
 
     // Fire-and-forget file generation
     const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
-    const headers = { "Content-Type": "application/json" };
+    const headers = {
+      "Content-Type": "application/json",
+      "x-internal-secret": process.env.CRON_SECRET ?? "",
+    };
     const body = JSON.stringify({ engagementId });
 
     fetch(`${appUrl}/api/files/generate-pptx`, { method: "POST", headers, body }).catch(

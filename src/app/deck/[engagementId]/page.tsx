@@ -79,7 +79,9 @@ export default async function DeckPage({ params, searchParams }: Props) {
     (engagement.aiDraft?.deckOutline as DeckSlide[] | undefined) ??
     [];
 
-  const hasDeckFile = !!(engagement.files?.deckPath || engagement.files?.deckUrl);
+  // No Storage dependency — the pptx is built on demand at download time, so
+  // the download button just needs a finished AI draft to exist.
+  const hasDeckFile = !!engagement.aiDraft;
 
   return (
     <DeckViewer

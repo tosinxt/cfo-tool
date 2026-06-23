@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Outfit } from "next/font/google";
+import { Playfair_Display, Outfit, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 const ppMondwest = Playfair_Display({
@@ -13,6 +13,12 @@ const af = Outfit({
   subsets: ["latin"],
   variable: "--font-af",
   weight: ["400", "500", "600", "700"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  weight: ["400", "500"],
 });
 
 export const viewport = {
@@ -69,7 +75,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${ppMondwest.variable} ${af.variable}`}>
+    <html lang="en" className={`${ppMondwest.variable} ${af.variable} ${plexMono.variable}`}>
       <body className="antialiased">
         {children}
       </body>

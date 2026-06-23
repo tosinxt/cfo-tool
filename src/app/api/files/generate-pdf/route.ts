@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb, adminStorage } from "@/lib/firebase/admin";
+import * as Sentry from "@sentry/nextjs";
+import { adminDb } from "@/lib/firebase/admin";
+import { verifyAdminForApi } from "@/lib/auth/verifyAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildReport } from "@/lib/pdf/buildReport";
 import type { Engagement } from "@/lib/types";
@@ -9,6 +11,20 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // Accept either the internal CRON_SECRET (server-to-server from generate-draft)
+  // or an authenticated admin session (the "Regenerate" button in the admin UI).
+  const internalSecret = req.headers.get("x-internal-secret");
+  const isInternal =
+    internalSecret && process.env.CRON_SECRET && internalSecret === process.env.CRON_SECRET;
+
+  if (!isInternal) {
+    try {
+      await verifyAdminForApi(req.headers.get("cookie"));
+    } catch {
+      return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+    }
+  }
+
   let engagementId: string | undefined;
 
   try {
@@ -56,25 +72,12 @@ export async function POST(req: NextRequest) {
     engagement.intake?.companyName ?? engagement.clientName ?? "Company";
 
   try {
-    const pdfBuffer = await buildReport(draft, companyName);
-
-    const version = (engagement.files?.reportVersion ?? 0) + 1;
-    const storagePath = `engagements/${engagementId}/report_v${version}.pdf`;
-
-    const bucket = adminStorage.bucket();
-    const file = bucket.file(storagePath);
-
-    await file.save(pdfBuffer, {
-      metadata: {
-        contentType: "application/pdf",
-        metadata: { engagementId, version: String(version) },
-      },
-    });
+    // No Cloud Storage dependency — the report is built fresh from aiDraft/cfoEdits
+    // on every download instead of being persisted. This call just validates the
+    // build succeeds (e.g. after a CFO edit) and surfaces errors early.
+    await buildReport(draft, companyName);
 
     await docRef.update({
-      "files.reportPath": storagePath,
-      "files.reportVersion": version,
-      "files.reportUrl": FieldValue.delete(), // served via /api/admin/.../download, not a public URL
       "files.reportError": FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = (err as Error).message;
     console.error(`[generate-pdf] failed for ${engagementId}: ${message}`);
+    Sentry.captureException(err, { tags: { route: "generate-pdf" }, extra: { engagementId } });
     await docRef
       .update({
         "files.reportError": { message, failedAt: FieldValue.serverTimestamp() },

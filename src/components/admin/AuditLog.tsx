@@ -50,19 +50,19 @@ export function AuditLog({ engagementId }: { engagementId: string }) {
 
   if (events.length === 0) {
     return (
-      <p className="text-xs text-gray-400 py-4 text-center">No events yet.</p>
+      <p className="text-[12px] text-gray-400 py-4 text-center">No events yet.</p>
     );
   }
 
   return (
     <ol className="space-y-3">
       {events.map((ev) => (
-        <li key={ev.id} className="text-xs">
+        <li key={ev.id} className="text-[12px] border-l-2 border-gray-100 pl-2.5">
           <p className="font-medium text-gray-700">
             {TYPE_LABELS[ev.type] ?? ev.type}
           </p>
           <p className="text-gray-500">{ev.description}</p>
-          <p className="text-gray-400 mt-0.5">
+          <p className="text-gray-400 mt-0.5 font-mono [font-variant-numeric:tabular-nums]">
             {ev.actorEmail ?? "system"} · {formatTs(ev.createdAt)}
           </p>
         </li>

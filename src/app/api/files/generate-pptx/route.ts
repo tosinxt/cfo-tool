@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb, adminStorage } from "@/lib/firebase/admin";
+import * as Sentry from "@sentry/nextjs";
+import { adminDb } from "@/lib/firebase/admin";
+import { verifyAdminForApi } from "@/lib/auth/verifyAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { buildDeck } from "@/lib/pptx/buildDeck";
 import type { Engagement } from "@/lib/types";
@@ -9,6 +11,20 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // Accept either the internal CRON_SECRET (server-to-server from generate-draft)
+  // or an authenticated admin session (the "Regenerate" button in the admin UI).
+  const internalSecret = req.headers.get("x-internal-secret");
+  const isInternal =
+    internalSecret && process.env.CRON_SECRET && internalSecret === process.env.CRON_SECRET;
+
+  if (!isInternal) {
+    try {
+      await verifyAdminForApi(req.headers.get("cookie"));
+    } catch {
+      return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+    }
+  }
+
   let engagementId: string | undefined;
 
   try {
@@ -50,32 +66,19 @@ export async function POST(req: NextRequest) {
       engagement.cfoEdits?.deckOutline ?? engagement.aiDraft.deckOutline,
     reportSections:
       engagement.cfoEdits?.reportSections ?? engagement.aiDraft.reportSections,
+    design: engagement.cfoEdits?.design ?? engagement.aiDraft.design,
   };
 
   const companyName =
     engagement.intake?.companyName ?? engagement.clientName ?? "Company";
 
   try {
-    const pptxBuffer = await buildDeck(draft, companyName);
-
-    const version = (engagement.files?.deckVersion ?? 0) + 1;
-    const storagePath = `engagements/${engagementId}/deck_v${version}.pptx`;
-
-    const bucket = adminStorage.bucket();
-    const file = bucket.file(storagePath);
-
-    await file.save(pptxBuffer, {
-      metadata: {
-        contentType:
-          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        metadata: { engagementId, version: String(version) },
-      },
-    });
+    // No Cloud Storage dependency — the deck is built fresh from aiDraft/cfoEdits
+    // on every download instead of being persisted. This call just validates the
+    // build succeeds (e.g. after a CFO edit) and surfaces errors early.
+    await buildDeck(draft, companyName);
 
     await docRef.update({
-      "files.deckPath": storagePath,
-      "files.deckVersion": version,
-      "files.deckUrl": FieldValue.delete(), // served via /api/admin/.../download, not a public URL
       "files.deckError": FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -84,6 +87,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = (err as Error).message;
     console.error(`[generate-pptx] failed for ${engagementId}: ${message}`);
+    Sentry.captureException(err, { tags: { route: "generate-pptx" }, extra: { engagementId } });
     await docRef
       .update({
         "files.deckError": { message, failedAt: FieldValue.serverTimestamp() },

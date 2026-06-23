@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb, adminStorage } from "@/lib/firebase/admin";
+import * as Sentry from "@sentry/nextjs";
+import { adminDb } from "@/lib/firebase/admin";
+import { buildDeck } from "@/lib/pptx/buildDeck";
 import type { Engagement } from "@/lib/types";
+import type { AIDraft } from "@/lib/ai/types";
 
 export const runtime = "nodejs";
 
@@ -20,31 +23,38 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const engagement = { id: engagementId, ...docSnap.data() } as Engagement;
+  const engagement = { id: engagementId, ...docSnap.data() } as Engagement & {
+    aiDraft?: AIDraft;
+  };
 
   if (engagement.intakeToken !== token) {
     return NextResponse.json({ error: "Invalid token" }, { status: 403 });
   }
 
-  const storagePath = engagement.files?.deckPath;
-  const deckUrl = engagement.files?.deckUrl;
-
-  if (!storagePath && !deckUrl) {
+  if (!engagement.aiDraft) {
     return NextResponse.json({ error: "Deck not yet generated" }, { status: 404 });
   }
 
-  // If we have a direct URL (e.g. manually uploaded), redirect to it
-  if (deckUrl && !storagePath) {
-    return NextResponse.redirect(deckUrl);
-  }
+  const draft: AIDraft = {
+    ...engagement.aiDraft,
+    deckOutline: engagement.cfoEdits?.deckOutline ?? engagement.aiDraft.deckOutline,
+    design: engagement.cfoEdits?.design ?? engagement.aiDraft.design,
+  };
 
-  const [signedUrl] = await adminStorage
-    .bucket()
-    .file(storagePath!)
-    .getSignedUrl({
-      action: "read",
-      expires: Date.now() + 15 * 60 * 1000, // 15-minute window
+  const companyName = engagement.intake?.companyName ?? engagement.clientName ?? "Company";
+
+  try {
+    const pptxBuffer = await buildDeck(draft, companyName);
+    return new NextResponse(new Uint8Array(pptxBuffer), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "Content-Disposition": `attachment; filename="${companyName.replace(/[^a-z0-9]+/gi, "_")}_pitch_deck.pptx"`,
+      },
     });
-
-  return NextResponse.redirect(signedUrl);
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[deck-download] build failed for ${engagementId}: ${message}`);
+    Sentry.captureException(err, { tags: { route: "deck-download" }, extra: { engagementId } });
+    return NextResponse.json({ error: "Failed to generate deck" }, { status: 500 });
+  }
 }

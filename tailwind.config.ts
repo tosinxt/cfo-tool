@@ -13,6 +13,7 @@ const config: Config = {
       fontFamily: {
         display: ["var(--font-ppmondwest)"],
         body: ["var(--font-af)"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       colors: {
         // GIC brand palette

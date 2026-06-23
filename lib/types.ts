@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
-import type { DeckSlide, ReportSection } from "./ai/types";
+import type { DeckSlide, ReportSection, DraftProgress } from "./ai/types";
+import type { DesignSpec } from "./pptx/themes";
 
 export type EngagementStatus =
   | "paid"
@@ -86,6 +87,7 @@ export interface CfoEdits {
   editedContent?: Partial<AiDraft>;
   deckOutline?: DeckSlide[];
   reportSections?: ReportSection[];
+  design?: DesignSpec;
   editedBy: string;
   editedAt: Timestamp;
   notes?: string;
@@ -96,17 +98,11 @@ export interface FileError {
   failedAt: Timestamp;
 }
 
+// Files are built on demand from aiDraft/cfoEdits at download time (no Cloud
+// Storage dependency) — this only tracks the last build error, if any.
 export interface EngagementFiles {
-  deckUrl?: string;
-  deckPath?: string;
-  deckVersion?: number;
   deckError?: FileError;
-  reportUrl?: string;
-  reportPath?: string;
-  reportVersion?: number;
   reportError?: FileError;
-  supplementaryUrls?: string[];
-  supplementaryPaths?: string[];
 }
 
 export interface Engagement {
@@ -122,9 +118,10 @@ export interface Engagement {
   paidAt?: Timestamp;
   intakeSubmittedAt?: Timestamp;
   intake?: IntakeFormData;
-  aiDraft?: AiDraft & { deckOutline?: DeckSlide[]; reportSections?: ReportSection[] };
+  aiDraft?: AiDraft & { deckOutline?: DeckSlide[]; reportSections?: ReportSection[]; design?: DesignSpec };
   cfoEdits?: CfoEdits;
   files?: EngagementFiles;
+  draftProgress?: DraftProgress;
 }
 
 export type EngagementEventType =

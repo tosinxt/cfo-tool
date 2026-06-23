@@ -1,7 +1,6 @@
 import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getStorage, type Storage } from "firebase-admin/storage";
 
 function getAdminApp(): App {
   if (getApps().length) return getApps()[0];
@@ -17,7 +16,6 @@ function getAdminApp(): App {
 
   return initializeApp({
     credential: cert(serviceAccount),
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   });
 }
 
@@ -33,11 +31,5 @@ export const adminDb = new Proxy({} as Firestore, {
 export const adminAuth = new Proxy({} as Auth, {
   get(_t, prop) {
     return (getAuth(getAdminApp()) as unknown as Record<string | symbol, unknown>)[prop];
-  },
-});
-
-export const adminStorage = new Proxy({} as Storage, {
-  get(_t, prop) {
-    return (getStorage(getAdminApp()) as unknown as Record<string | symbol, unknown>)[prop];
   },
 });

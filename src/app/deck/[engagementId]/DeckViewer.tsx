@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import Cloudscape from "@/components/forgeui/cloudscape";
-import type { DeckSlide, SlideType } from "@/lib/ai/types";
+import type { DeckSlide, SlideType, DraftProgress } from "@/lib/ai/types";
+import { DRAFT_STAGES } from "@/lib/ai/types";
 
 const SLIDE_TYPE_LABELS: Record<SlideType, string> = {
   title: "Title",
@@ -49,10 +51,42 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
   const [activeIdx, setActiveIdx] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [direction, setDirection] = useState(1);
+  const [progress, setProgress] = useState<DraftProgress | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const router = useRouter();
+  const startedAt = useRef(Date.now());
 
   const badge = STATUS_COPY[status] ?? STATUS_COPY.drafting;
   const hasSlides = slides.length > 0;
   const activeSlide = slides[activeIdx];
+  const isGenerating = status === "drafting" && !hasSlides;
+
+  // Poll real pipeline progress while the draft is being generated, and
+  // auto-refresh the page once a stage transition actually lands.
+  useEffect(() => {
+    if (!isGenerating) return;
+
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 1000);
+
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/deck/${engagementId}/status?token=${encodeURIComponent(token)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.draftProgress) setProgress(data.draftProgress);
+        if (data.status !== "drafting" || data.slideCount > 0) {
+          router.refresh();
+        }
+      } catch {
+        // transient — next poll will retry
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(tick);
+      clearInterval(poll);
+    };
+  }, [isGenerating, engagementId, token, router]);
 
   function goTo(i: number) {
     setDirection(i > activeIdx ? 1 : -1);
@@ -137,7 +171,7 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
           </p>
         </div>
 
-        {/* No slides yet — waiting state */}
+        {/* No slides yet — real pipeline progress */}
         {!hasSlides && (
           <div className="rounded-[16px] p-10 text-center"
             style={{
@@ -152,14 +186,74 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <p className="mb-2 text-[16px] font-[500]" style={{ color: "var(--color-ink)" }}>AI is drafting your deck</p>
-            <p className="text-[13px] leading-[1.6]" style={{ color: "var(--color-steel)" }}>
-              This usually takes 1–2 minutes. Refresh the page to check for updates.
-            </p>
-            <button onClick={() => window.location.reload()}
-              className="mt-5 rounded-[8px] px-5 py-2 text-[13px] font-[500] transition-opacity hover:opacity-80"
+            <p className="mb-1 text-[16px] font-[500]" style={{ color: "var(--color-ink)" }}>AI is drafting your deck</p>
+
+            {(() => {
+              const currentIdx = Math.max(progress?.stageIndex ?? 0, 0);
+              const total = DRAFT_STAGES.length;
+              return (
+                <>
+                  <p className="mb-7 text-[13px] font-[600] uppercase tracking-[0.08em]" style={{ color: "var(--color-hudson-blue)" }}>
+                    Leg {currentIdx + 1} of {total} · {elapsed}s elapsed
+                  </p>
+
+                  {/* Horizontal numbered stepper */}
+                  <div className="mx-auto mb-6 flex max-w-[560px] items-start justify-between">
+                    {DRAFT_STAGES.map((stage, i) => {
+                      const done = i < currentIdx;
+                      const active = i === currentIdx;
+                      return (
+                        <div key={stage.id} className="flex flex-1 flex-col items-center text-center" style={{ minWidth: 0 }}>
+                          <div className="flex w-full items-center" style={{ marginBottom: 10 }}>
+                            {i > 0 && (
+                              <span className="h-[2px] flex-1" style={{
+                                background: i <= currentIdx ? "var(--color-hudson-blue)" : "rgba(0,0,0,0.08)",
+                                transition: "background 300ms ease",
+                              }} />
+                            )}
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-[700]"
+                              style={{
+                                background: done ? "#16a34a" : active ? "var(--color-hudson-blue)" : "rgba(0,0,0,0.06)",
+                                color: done || active ? "white" : "var(--color-steel)",
+                                boxShadow: active ? "0 0 0 4px rgba(0,129,192,0.16)" : "none",
+                                transition: "all 300ms ease",
+                              }}>
+                              {done ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              ) : active ? (
+                                <svg width="14" height="14" viewBox="0 0 14 14" style={{ animation: "spin 0.8s linear infinite" }}>
+                                  <circle cx="7" cy="7" r="5.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" />
+                                  <path d="M7 1.5A5.5 5.5 0 0 1 12.5 7" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                                </svg>
+                              ) : (
+                                i + 1
+                              )}
+                            </span>
+                            {i < DRAFT_STAGES.length - 1 && (
+                              <span className="h-[2px] flex-1" style={{
+                                background: i < currentIdx ? "var(--color-hudson-blue)" : "rgba(0,0,0,0.08)",
+                                transition: "background 300ms ease",
+                              }} />
+                            )}
+                          </div>
+                          <span className="px-1 text-[11.5px] leading-[1.35]"
+                            style={{ color: done || active ? "var(--color-ink)" : "var(--color-steel)", fontWeight: active ? 700 : 500 }}>
+                            {stage.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+
+            <button onClick={() => router.refresh()}
+              className="mt-7 rounded-[8px] px-5 py-2 text-[13px] font-[500] transition-opacity hover:opacity-80"
               style={{ background: "var(--color-ink)", color: "white" }}>
-              Refresh
+              Refresh now
             </button>
           </div>
         )}

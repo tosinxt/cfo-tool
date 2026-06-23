@@ -6,6 +6,13 @@ const nextConfig = {
     formats: ["image/avif", "image/webp"],
     deviceSizes: [390, 640, 768, 1080, 1280, 1920],
   },
+  // pdfkit ships its standard font .afm files as plain data files next to its JS.
+  // Webpack bundling for route handlers doesn't carry those along, causing
+  // ENOENT at runtime. Keeping pdfkit external makes Next require() it straight
+  // from node_modules, where the font files actually live on disk.
+  experimental: {
+    serverComponentsExternalPackages: ["pdfkit"],
+  },
 };
 
 export default withSentryConfig(nextConfig, {

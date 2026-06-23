@@ -11,6 +11,20 @@ const links = [
 
 export function CalderaNav() {
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleGetStarted() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/stripe/create-checkout", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to create checkout session");
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch {
+      setLoading(false);
+    }
+  }
 
   return (
     <>
@@ -88,8 +102,9 @@ export function CalderaNav() {
                 border: "none",
               }}
             />
-            <a
-              href="/intake/demo-engagement-001?token=demo-token-insecure"
+            <button
+              onClick={handleGetStarted}
+              disabled={loading}
               className="flex items-center gap-1.5 rounded-[50px] px-4 py-[7px] text-[13px] font-[500] leading-none transition-all duration-150"
               style={{
                 color: "var(--color-slate-cyan)",
@@ -98,20 +113,21 @@ export function CalderaNav() {
                 border: "none",
                 outline: "none",
                 textDecoration: "none",
+                cursor: loading ? "default" : "pointer",
               }}
               onMouseEnter={(e) => {
-                const el = e.currentTarget as HTMLAnchorElement;
+                const el = e.currentTarget as HTMLButtonElement;
                 el.style.background = "rgba(0,174,239,0.17)";
                 el.style.boxShadow = "inset 0 0 0 1px rgba(0,174,239,0.65), 0 0 14px rgba(0,174,239,0.22)";
               }}
               onMouseLeave={(e) => {
-                const el = e.currentTarget as HTMLAnchorElement;
+                const el = e.currentTarget as HTMLButtonElement;
                 el.style.background = "rgba(0,174,239,0.09)";
                 el.style.boxShadow = "inset 0 0 0 1px rgba(0,174,239,0.38)";
               }}
             >
-              Get Started <span className="opacity-60">→</span>
-            </a>
+              {loading ? "Loading…" : "Get Started"} <span className="opacity-60">→</span>
+            </button>
           </div>
 
           {/* Mobile right side */}
@@ -119,8 +135,9 @@ export function CalderaNav() {
             className="ml-auto flex shrink-0 items-center gap-2 px-3 py-2 sm:hidden"
             style={{ border: "none" }}
           >
-            <a
-              href="/intake/demo-engagement-001?token=demo-token-insecure"
+            <button
+              onClick={handleGetStarted}
+              disabled={loading}
               className="rounded-[50px] px-3.5 py-[7px] text-[13px] font-[500] leading-none"
               style={{
                 color: "var(--color-slate-cyan)",
@@ -129,10 +146,11 @@ export function CalderaNav() {
                 border: "none",
                 outline: "none",
                 textDecoration: "none",
+                cursor: loading ? "default" : "pointer",
               }}
             >
-              Get Started
-            </a>
+              {loading ? "…" : "Get Started"}
+            </button>
 
             <button
               onClick={() => setOpen((v) => !v)}
@@ -207,10 +225,13 @@ export function CalderaNav() {
           ))}
 
           <div className="px-2 pb-1 pt-2" style={{ border: "none" }}>
-            <a
-              href="/intake/demo-engagement-001?token=demo-token-insecure"
-              onClick={() => setOpen(false)}
-              className="flex items-center justify-center rounded-[12px] py-3.5 text-[15px] font-[500] leading-none transition-colors"
+            <button
+              onClick={() => {
+                setOpen(false);
+                handleGetStarted();
+              }}
+              disabled={loading}
+              className="flex w-full items-center justify-center rounded-[12px] py-3.5 text-[15px] font-[500] leading-none transition-colors"
               style={{
                 color: "var(--color-slate-cyan)",
                 background: "rgba(0,174,239,0.10)",
@@ -221,8 +242,8 @@ export function CalderaNav() {
                 textDecoration: "none",
               }}
             >
-              Get Started →
-            </a>
+              {loading ? "Loading…" : "Get Started →"}
+            </button>
           </div>
         </div>
       </div>
