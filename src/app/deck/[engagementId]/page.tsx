@@ -7,7 +7,7 @@ import DeckViewer from "./DeckViewer";
 import Cloudscape from "@/components/forgeui/cloudscape";
 
 export const metadata: Metadata = {
-  title: "Your Pitch Deck — PitchReady",
+  title: "Your Pitch Deck — Series A HUB",
   robots: { index: false, follow: false },
 };
 
@@ -27,7 +27,7 @@ function GateError({ message }: { message: string }) {
         <div className="mb-10">
           <span className="text-[16px] font-[400] leading-none tracking-[-0.32px]"
             style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}>
-            Pitch<span style={{ color: "var(--color-hudson-blue)" }}>Ready</span>
+            Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
           </span>
         </div>
         <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full"
@@ -96,7 +96,7 @@ export default async function DeckPage({ params, searchParams }: Props) {
 }
 
 const DEMO_SLIDES: DeckSlide[] = [
-  { slideType: "title", title: "Demo Company", bullets: ["Investor-ready pitch deck", "Powered by PitchReady"], speakerNotes: "" },
+  { slideType: "title", title: "Demo Company", bullets: ["Investor-ready pitch deck", "Powered by Series A HUB"], speakerNotes: "" },
   { slideType: "problem", title: "The Problem", bullets: ["Market pain point 1", "Market pain point 2", "Why now"], speakerNotes: "" },
   { slideType: "solution", title: "Our Solution", bullets: ["What we built", "Key differentiator", "Why it works"], speakerNotes: "" },
 ];

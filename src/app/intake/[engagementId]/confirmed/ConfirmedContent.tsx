@@ -122,7 +122,7 @@ export default function ConfirmedContent({ engagementId, token }: { engagementId
             fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0',
             fontSize: "16px", fontWeight: 400, letterSpacing: "-0.32px", color: "var(--color-ink)",
           }}>
-            Pitch<span style={{ color: "var(--color-hudson-blue)" }}>Ready</span>
+            Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
           </span>
         </div>
 

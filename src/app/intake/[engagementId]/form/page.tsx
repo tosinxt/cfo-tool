@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { adminDb } from "@/lib/firebase/admin";
-import IntakeChat from "./IntakeChat";
+import IntakeForm from "../IntakeForm";
 import { DEMO_MODE, DEMO_ENGAGEMENT_ID, DEMO_TOKEN } from "@/lib/demo";
 import Cloudscape from "@/components/forgeui/cloudscape";
 
 export const metadata: Metadata = {
-  title: "Your Intake Interview",
-  description: "Answer a few questions so we can build your investor-ready Series A pitch deck.",
+  title: "Your Intake Form",
+  description: "Complete your intake form so we can build your investor-ready Series A pitch deck.",
   robots: { index: false, follow: false },
 };
 
@@ -23,8 +23,9 @@ export default async function IntakePage({ params, searchParams }: Props) {
     return <GateError message="This link is missing a required access token." />;
   }
 
+  // Demo mode: bypass all Firestore checks
   if (DEMO_MODE && engagementId === DEMO_ENGAGEMENT_ID && token === DEMO_TOKEN) {
-    return <IntakeChat engagementId={engagementId} token={token} />;
+    return <IntakeForm engagementId={engagementId} token={token} />;
   }
 
   const docSnap = await adminDb.collection("engagements").doc(engagementId).get();
@@ -51,7 +52,7 @@ export default async function IntakePage({ params, searchParams }: Props) {
     );
   }
 
-  return <IntakeChat engagementId={engagementId} token={token} />;
+  return <IntakeForm engagementId={engagementId} token={token} />;
 }
 
 function GateError({ message }: { message: string }) {
@@ -70,6 +71,7 @@ function GateError({ message }: { message: string }) {
         style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100dvh" }}
       />
       <div className="relative w-full max-w-[400px] text-center">
+        {/* Brand */}
         <div className="mb-10">
           <span
             className="text-[16px] font-[400] leading-none tracking-[-0.32px]"
@@ -78,6 +80,8 @@ function GateError({ message }: { message: string }) {
             Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
           </span>
         </div>
+
+        {/* Icon */}
         <div
           className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-full"
           style={{ background: "var(--color-linen)", border: "1px solid var(--color-sage)" }}
@@ -86,6 +90,7 @@ function GateError({ message }: { message: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
           </svg>
         </div>
+
         <h1
           className="mb-3 text-[28px] font-[400] leading-[1.1] tracking-[-0.56px]"
           style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}

@@ -83,7 +83,7 @@ async function callOpenRouter(
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://pitchready.co",
-      "X-Title": "PitchReady",
+      "X-Title": "Series A HUB",
     },
     body: JSON.stringify({
       model: MODEL,

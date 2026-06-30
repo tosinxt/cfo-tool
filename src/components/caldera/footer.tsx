@@ -41,7 +41,7 @@ export function CalderaFooter() {
               className="text-[15px] font-[500] text-white"
               style={{ fontFamily: "var(--font-af)" }}
             >
-              Pitch<span style={{ color: "var(--color-slate-cyan)" }}>Ready</span>
+              Series A <span style={{ color: "var(--color-slate-cyan)" }}>HUB</span>
             </span>
             <p
               className="text-[13px] font-[400] leading-[1.5] text-white/50"
@@ -79,7 +79,7 @@ export function CalderaFooter() {
           className="mt-10 text-[12px] font-[400] uppercase tracking-[0.06em] text-white/30 sm:mt-12 sm:text-[13px]"
           style={{ fontFamily: "var(--font-af)" }}
         >
-          © {new Date().getFullYear()} PitchReady. All rights reserved.
+          © {new Date().getFullYear()} Series A HUB. All rights reserved.
         </p>
       </div>
     </footer>

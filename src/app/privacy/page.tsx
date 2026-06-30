@@ -3,12 +3,12 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "How PitchReady collects, uses, and protects your data.",
+  description: "How Series A HUB collects, uses, and protects your data.",
   robots: { index: true, follow: true },
 };
 
 const EFFECTIVE_DATE = "June 11, 2025";
-const COMPANY = "PitchReady";
+const COMPANY = "Series A HUB";
 const CONTACT_EMAIL = "privacy@pitchready.co";
 
 const sections = [
@@ -87,7 +87,7 @@ export default function PrivacyPage() {
         <div style={{ maxWidth: "720px", margin: "0 auto", height: "56px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Link href="/" style={{ textDecoration: "none" }}>
             <span style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', fontSize: "15px", fontWeight: 400, letterSpacing: "-0.3px", color: "var(--color-ink, #111)" }}>
-              Pitch<span style={{ color: "var(--color-hudson-blue, #0081c0)" }}>Ready</span>
+              Series A <span style={{ color: "var(--color-hudson-blue, #0081c0)" }}>HUB</span>
             </span>
           </Link>
           <Link href="/terms" style={{ fontSize: "13px", color: "var(--color-steel, #4a4a4a)", textDecoration: "none" }}>
@@ -112,7 +112,7 @@ export default function PrivacyPage() {
 
         {/* Intro */}
         <p style={{ fontSize: "15px", lineHeight: 1.75, color: "var(--color-steel, #555)", marginBottom: "40px" }}>
-          {COMPANY} (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) operates PitchReady
+          {COMPANY} (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) operates Series A HUB
           (the &ldquo;Service&rdquo;). This Privacy Policy explains what information we collect,
           how we use it, and the choices you have.
         </p>

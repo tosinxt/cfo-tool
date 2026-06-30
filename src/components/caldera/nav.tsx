@@ -61,7 +61,7 @@ export function CalderaNav() {
                 fontFeatureSettings: '"liga" 0',
               }}
             >
-              Pitch<span style={{ color: "var(--color-slate-cyan)" }}>Ready</span>
+              Series A <span style={{ color: "var(--color-slate-cyan)" }}>HUB</span>
             </span>
           </a>
 

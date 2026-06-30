@@ -124,7 +124,7 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
         <div className="mb-8 flex items-center justify-between">
           <span className="text-[16px] font-[400] leading-none tracking-[-0.32px]"
             style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}>
-            Pitch<span style={{ color: "var(--color-hudson-blue)" }}>Ready</span>
+            Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
           </span>
 
           {hasDeckFile && (

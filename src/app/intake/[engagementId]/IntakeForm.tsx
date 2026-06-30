@@ -1822,7 +1822,7 @@ export default function IntakeForm({ engagementId, token }: Props) {
         <div className="mb-8 flex items-center justify-between">
           <span className="text-[16px] font-[400] leading-none tracking-[-0.32px]"
             style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}>
-            Pitch<span style={{ color: "var(--color-hudson-blue)" }}>Ready</span>
+            Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span className="text-[11px]" style={{ color: "var(--color-fog)", fontFamily: "var(--font-af)" }}>
@@ -1833,6 +1833,14 @@ export default function IntakeForm({ engagementId, token }: Props) {
             </span>
           </div>
         </div>
+
+        <a
+          href={`/intake/${engagementId}?token=${encodeURIComponent(token)}`}
+          className="mb-4 inline-block text-[11px] underline underline-offset-2"
+          style={{ color: "var(--color-fog)", textDecorationColor: "rgba(0,0,0,0.2)" }}
+        >
+          Prefer a quick chat instead?
+        </a>
 
         {/* Segmented progress bar */}
         <SegmentedProgress step={step} total={STEPS.length} />

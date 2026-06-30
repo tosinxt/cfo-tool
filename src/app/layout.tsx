@@ -29,8 +29,8 @@ export const viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "PitchReady — Investor-Ready Series A Pitch Decks",
-    template: "%s | PitchReady",
+    default: "Series A HUB — Investor-Ready Series A Pitch Decks",
+    template: "%s | Series A HUB",
   },
   description:
     "Get a CFO-reviewed, investor-ready Series A pitch deck and written report in 5–7 business days. Built from your intake, refined by a seasoned CFO.",
@@ -43,13 +43,13 @@ export const metadata: Metadata = {
     "pitch deck service",
     "investor ready deck",
   ],
-  authors: [{ name: "PitchReady" }],
-  creator: "PitchReady",
+  authors: [{ name: "Series A HUB" }],
+  creator: "Series A HUB",
   metadataBase: new URL("https://cfo-tool-five.vercel.app"),
   openGraph: {
     type: "website",
-    siteName: "PitchReady",
-    title: "PitchReady — Investor-Ready Series A Pitch Decks",
+    siteName: "Series A HUB",
+    title: "Series A HUB — Investor-Ready Series A Pitch Decks",
     description:
       "CFO-reviewed pitch deck and written report in 5–7 business days. No calls. No back-and-forth.",
     url: "https://cfo-tool-five.vercel.app",
@@ -57,7 +57,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "PitchReady — Investor-Ready Series A Pitch Decks",
+    title: "Series A HUB — Investor-Ready Series A Pitch Decks",
     description:
       "CFO-reviewed pitch deck and written report in 5–7 business days. No calls. No back-and-forth.",
     creator: "@pitchready",

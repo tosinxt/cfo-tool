@@ -43,7 +43,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const rate = await checkRateLimit(req);
+  const rate = await checkRateLimit(req, { key: "intake-submit" });
   if (!rate.allowed) {
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },

@@ -10,6 +10,19 @@ import type { Engagement } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+// A pipeline run that hasn't touched draftProgress in this long is assumed
+// dead (e.g. the dev server restarted mid-run) rather than still in flight —
+// comfortably longer than maxDuration so a genuinely running request is
+// never mistaken for a stale one.
+const STALE_DRAFT_THRESHOLD_MS = 5 * 60 * 1000;
+
+function isDraftProgressStale(progress: { updatedAt: string } | undefined): boolean {
+  if (!progress?.updatedAt) return true;
+  const updatedAt = new Date(progress.updatedAt).getTime();
+  if (Number.isNaN(updatedAt)) return true;
+  return Date.now() - updatedAt > STALE_DRAFT_THRESHOLD_MS;
+}
+
 export async function POST(req: NextRequest) {
   // Accept either an authenticated admin session cookie OR the internal CRON_SECRET,
   // which is used by server-to-server calls (e.g. intake/submit fire-and-forget trigger).
@@ -59,15 +72,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Idempotency: skip if already generated, or a pipeline run is already in
+  // Idempotency: skip if already generated, or a pipeline run is genuinely in
   // progress for this engagement (status flips to "drafting" by the caller
   // *before* this endpoint runs, so "drafting" alone isn't a signal that the
-  // pipeline has actually started — draftProgress is).
+  // pipeline has actually started — a recently-updated draftProgress is). A
+  // draftProgress that stopped updating a while ago means a prior run died
+  // without reporting an error (e.g. process restart) — that's eligible for
+  // retry rather than skipped forever.
   if (
     engagement.status === "ready_for_review" ||
     engagement.status === "approved" ||
     engagement.status === "delivered" ||
-    (engagement.status === "drafting" && engagement.draftProgress)
+    (engagement.status === "drafting" && !isDraftProgressStale(engagement.draftProgress))
   ) {
     return NextResponse.json({ success: true, skipped: true });
   }

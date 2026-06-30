@@ -8,39 +8,51 @@ import type { NextRequest } from "next/server";
 // fine for local dev and single-instance deploys but will not share state across
 // Vercel serverless function instances in production.
 
-let upstashLimiter: ReturnType<typeof buildUpstashLimiter> | null = null;
+type UpstashRatelimit = InstanceType<typeof import("@upstash/ratelimit").Ratelimit>;
 
-function buildUpstashLimiter() {
-  // Dynamic import at call time so the module can be imported without the
-  // Upstash env vars — the fallback branch never references these symbols.
-  const { Ratelimit } = require("@upstash/ratelimit") as typeof import("@upstash/ratelimit");
-  const { Redis } = require("@upstash/redis") as typeof import("@upstash/redis");
+let redisClient: InstanceType<typeof import("@upstash/redis").Redis> | null | undefined;
+// Limiters are scoped per (key, max, window) combo — different routes get
+// independent buckets instead of sharing one IP-keyed counter.
+const upstashLimiters = new Map<string, UpstashRatelimit>();
 
-  const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL!,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-  });
-
-  return new Ratelimit({
-    redis,
-    limiter: Ratelimit.slidingWindow(5, "1 h"),
-    analytics: false,
-    prefix: "cfo:rl",
-  });
+function getRedisClient() {
+  if (redisClient !== undefined) return redisClient;
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    redisClient = null;
+    return redisClient;
+  }
+  try {
+    // Dynamic require at call time so the module loads fine without the
+    // Upstash env vars — this branch never runs in that case.
+    const { Redis } = require("@upstash/redis") as typeof import("@upstash/redis");
+    redisClient = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+  } catch {
+    console.warn("[rateLimit] Failed to initialise Upstash, falling back to in-memory store");
+    redisClient = null;
+  }
+  return redisClient;
 }
 
-function getUpstashLimiter() {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    return null;
-  }
-  if (!upstashLimiter) {
-    try {
-      upstashLimiter = buildUpstashLimiter();
-    } catch {
-      console.warn("[rateLimit] Failed to initialise Upstash, falling back to in-memory store");
-    }
-  }
-  return upstashLimiter;
+function getUpstashLimiter(routeKey: string, max: number, windowMs: number): UpstashRatelimit | null {
+  const redis = getRedisClient();
+  if (!redis) return null;
+
+  const cacheKey = `${routeKey}:${max}:${windowMs}`;
+  const cached = upstashLimiters.get(cacheKey);
+  if (cached) return cached;
+
+  const { Ratelimit } = require("@upstash/ratelimit") as typeof import("@upstash/ratelimit");
+  const limiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(max, `${Math.round(windowMs / 1000)} s`),
+    analytics: false,
+    prefix: `cfo:rl:${routeKey}`,
+  });
+  upstashLimiters.set(cacheKey, limiter);
+  return limiter;
 }
 
 // ─── In-memory fallback ───────────────────────────────────────────────────────
@@ -51,8 +63,8 @@ interface Entry {
 }
 
 const store = new Map<string, Entry>();
-const WINDOW_MS = 60 * 60 * 1_000; // 1 hour
-const MAX_REQUESTS = 5;
+const DEFAULT_WINDOW_MS = 60 * 60 * 1_000; // 1 hour
+const DEFAULT_MAX_REQUESTS = 5;
 
 // Prevent unbounded memory growth on long-lived processes
 setInterval(
@@ -66,16 +78,15 @@ setInterval(
 );
 
 function inMemoryCheck(
-  ip: string,
-  options?: { window?: number; max?: number }
+  storeKey: string,
+  max: number,
+  windowMs: number
 ): { allowed: boolean; retryAfter?: number } {
-  const window = options?.window ?? WINDOW_MS;
-  const max = options?.max ?? MAX_REQUESTS;
   const now = Date.now();
-  const entry = store.get(ip);
+  const entry = store.get(storeKey);
 
   if (!entry || entry.resetAt < now) {
-    store.set(ip, { count: 1, resetAt: now + window });
+    store.set(storeKey, { count: 1, resetAt: now + windowMs });
     return { allowed: true };
   }
 
@@ -99,11 +110,14 @@ function getIp(req: NextRequest): string {
 
 export async function checkRateLimit(
   req: NextRequest,
-  options?: { window?: number; max?: number }
+  options?: { window?: number; max?: number; key?: string }
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
   const ip = getIp(req);
-  const limiter = getUpstashLimiter();
+  const routeKey = options?.key ?? "default";
+  const max = options?.max ?? DEFAULT_MAX_REQUESTS;
+  const windowMs = options?.window ?? DEFAULT_WINDOW_MS;
 
+  const limiter = getUpstashLimiter(routeKey, max, windowMs);
   if (limiter) {
     const { success, reset } = await limiter.limit(ip);
     return {
@@ -112,5 +126,5 @@ export async function checkRateLimit(
     };
   }
 
-  return inMemoryCheck(ip, options);
+  return inMemoryCheck(`${routeKey}:${ip}`, max, windowMs);
 }

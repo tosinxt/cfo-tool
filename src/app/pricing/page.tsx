@@ -97,7 +97,7 @@ const FAQS = [
   },
   {
     q: "Is this right for my stage?",
-    a: "PitchReady is built for founders raising a Series A — typically $5M–$20M. If you're pre-seed or seed-stage, the frameworks still apply, but the CFO review will be calibrated for your actual traction and metrics.",
+    a: "Series A HUB is built for founders raising a Series A — typically $5M–$20M. If you're pre-seed or seed-stage, the frameworks still apply, but the CFO review will be calibrated for your actual traction and metrics.",
   },
   {
     q: "How does payment work?",
@@ -526,7 +526,7 @@ export default function PricingPage() {
             >
               <div className="px-5 py-4" />
               {[
-                { label: "PitchReady", highlight: true },
+                { label: "Series A HUB", highlight: true },
                 { label: "Boutique bank", highlight: false },
                 { label: "Freelancer", highlight: false },
               ].map((col) => (
@@ -568,7 +568,7 @@ export default function PricingPage() {
                   </span>
                 </div>
 
-                {/* PitchReady */}
+                {/* Series A HUB */}
                 <div
                   className="flex items-center px-5 py-4"
                   style={{ borderLeft: "1px solid rgba(0,129,192,0.2)", background: "rgba(0,129,192,0.03)" }}

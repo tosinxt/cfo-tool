@@ -13,7 +13,7 @@ export function AdminSidebar({ active }: { active: "dashboard" | "settings" }) {
   return (
     <aside className="w-[220px] shrink-0 bg-[oklch(97%_0.003_250)] border-r border-gray-200 flex flex-col">
       <div className="h-14 flex items-center px-4 border-b border-gray-200">
-        <span className="text-[14px] font-semibold text-gray-900">PitchReady</span>
+        <span className="text-[14px] font-semibold text-gray-900">Series A HUB</span>
         <span className="text-[11px] text-gray-400 ml-1.5">Admin</span>
       </div>
       <nav aria-label="Main navigation" className="flex-1 px-2 py-3 flex flex-col gap-0.5">
