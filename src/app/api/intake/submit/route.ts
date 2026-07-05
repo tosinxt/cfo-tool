@@ -38,7 +38,9 @@ const bodySchema = z.object({
   threeYearProjections: z.string().min(10),
   raiseAmount: z.string().min(1),
   valuationExpectation: z.string().min(1),
-  useOfFunds: z.string().min(20),
+  // Floor matches the intake form's allocation builder, whose shortest valid
+  // output is e.g. "Sales: 100%" (11 chars).
+  useOfFunds: z.string().min(8),
   currentInvestors: z.string(),
 });
 

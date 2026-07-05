@@ -27,6 +27,30 @@ export async function sendClientConfirmation(
   });
 }
 
+export async function sendDeckReady(
+  to: string,
+  engagementId: string,
+  intakeToken: string,
+  companyName?: string
+): Promise<void> {
+  const FROM = process.env.RESEND_FROM_ADDRESS!;
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL!;
+  const deckUrl = `${APP_URL}/deck/${engagementId}?token=${encodeURIComponent(intakeToken)}`;
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const name = companyName ? esc(companyName) : "";
+  await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: name ? `Your ${name} pitch deck is ready` : "Your pitch deck is ready",
+    html: `
+      <p>Your investor-ready pitch deck${name ? ` for <strong>${name}</strong>` : ""} is ready.</p>
+      <p><a href="${deckUrl}">View and download your deck →</a></p>
+      <p>This link is unique to you — please don't share it publicly.</p>
+      <p>Questions or revisions? Reply to this email and we'll get back to you within one business day.</p>
+    `,
+  });
+}
+
 export async function sendAdminNotification(
   engagementId: string,
   clientName: string

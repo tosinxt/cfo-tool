@@ -15,9 +15,42 @@ interface ChatMessage {
   content: string;
 }
 
+interface Progress {
+  covered: number;
+  total: number;
+}
+
 const STORAGE_KEY = (id: string) => `intake_chat_${id}`;
+// The written form autosaves its draft under this key (see IntakeForm.tsx) —
+// folding it into `collected` lets a founder switch from the form to the chat
+// without the AI re-asking what they already answered.
+const FORM_DRAFT_KEY = (id: string) => `intake_draft_${id}`;
 
 const OPENER = "Hi! I'm going to ask you a few questions to put together your pitch deck — should only take a few minutes. Let's start: what's your company called, and what's the one-liner pitch?";
+
+const RESUME_OPENER = "Hi! I can see you already answered some of this on the written form — I've carried those answers over, so I'll only ask about what's missing. Ready to pick up where you left off?";
+
+function readFormDraft(engagementId: string): Record<string, unknown> {
+  try {
+    const saved = localStorage.getItem(FORM_DRAFT_KEY(engagementId));
+    if (!saved) return {};
+    const draft = JSON.parse(saved) as Record<string, unknown>;
+    if (!draft || typeof draft !== "object" || Array.isArray(draft)) return {};
+    const out: Record<string, unknown> = {};
+    for (const [key, v] of Object.entries(draft)) {
+      if (typeof v === "string" && v.trim()) out[key] = v;
+      else if (key === "teamMembers" && Array.isArray(v)) {
+        const members = v.filter(
+          (m) => m && typeof m === "object" && Object.values(m).some((x) => typeof x === "string" && x.trim())
+        );
+        if (members.length) out.teamMembers = members;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 // Statuses where the engagement itself is invalid/finished — no amount of
 // retrying will fix it, so we end the conversation instead of leaving the
@@ -53,15 +86,27 @@ export default function IntakeChat({ engagementId, token }: Props) {
         if (parsed.messages?.length) return parsed.messages;
       }
     } catch { /* ignore */ }
-    return [{ role: "assistant", content: OPENER }];
+    const hasFormDraft = Object.keys(readFormDraft(engagementId)).length > 0;
+    return [{ role: "assistant", content: hasFormDraft ? RESUME_OPENER : OPENER }];
   });
+  // Chat's own extraction wins over the form draft: it is the fresher signal
+  // once the founder is actually talking to the interviewer.
   const [collected, setCollected] = useState<Record<string, unknown>>(() => {
     if (typeof window === "undefined") return {};
+    let chat: Record<string, unknown> = {};
     try {
       const saved = localStorage.getItem(STORAGE_KEY(engagementId));
-      if (saved) return (JSON.parse(saved) as { collected: Record<string, unknown> }).collected ?? {};
+      if (saved) chat = (JSON.parse(saved) as { collected: Record<string, unknown> }).collected ?? {};
     } catch { /* ignore */ }
-    return {};
+    return { ...readFormDraft(engagementId), ...chat };
+  });
+  const [progress, setProgress] = useState<Progress | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY(engagementId));
+      if (saved) return (JSON.parse(saved) as { progress?: Progress }).progress ?? null;
+    } catch { /* ignore */ }
+    return null;
   });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -75,9 +120,9 @@ export default function IntakeChat({ engagementId, token }: Props) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY(engagementId), JSON.stringify({ messages, collected }));
+      localStorage.setItem(STORAGE_KEY(engagementId), JSON.stringify({ messages, collected, progress }));
     } catch { /* ignore */ }
-  }, [messages, collected, engagementId]);
+  }, [messages, collected, progress, engagementId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -120,8 +165,10 @@ export default function IntakeChat({ engagementId, token }: Props) {
         collected: Record<string, unknown>;
         done: boolean;
         finalData?: Record<string, unknown>;
+        progress?: Progress;
       };
       setCollected(turn.collected);
+      if (turn.progress) setProgress(turn.progress);
       setMessages((m) => [...m, { role: "assistant", content: turn.message }]);
       if (turn.done && turn.finalData) {
         setDone(true);
@@ -167,7 +214,9 @@ export default function IntakeChat({ engagementId, token }: Props) {
       }
 
       localStorage.removeItem(STORAGE_KEY(engagementId));
-      router.push(`/deck/${engagementId}?token=${encodeURIComponent(token)}`);
+      // The deck isn't ready at submit time — land on the confirmation page;
+      // the client gets an email with the deck link when it's delivered.
+      router.push(`/intake/${engagementId}/confirmed?token=${encodeURIComponent(token)}`);
     } catch (err) {
       setError(
         err instanceof Error && err.name === "AbortError"
@@ -223,7 +272,7 @@ export default function IntakeChat({ engagementId, token }: Props) {
         className="mb-4 text-[12px] underline underline-offset-2"
         style={{ color: "var(--color-steel)", textDecorationColor: "var(--color-sage)" }}
       >
-        Prefer a written form instead?
+        Prefer a written form instead? Your answers carry over.
       </a>
 
       <div
@@ -236,6 +285,39 @@ export default function IntakeChat({ engagementId, token }: Props) {
           maxHeight: "80vh",
         }}
       >
+        {!fatalError && (
+          <div className="border-b px-5 pb-3 pt-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <span
+                className="text-[11px] font-[500] uppercase tracking-[0.06em]"
+                style={{ color: "var(--color-steel)" }}
+              >
+                {done ? "All topics covered" : "Interview progress"}
+              </span>
+              {progress && !done && (
+                <span className="text-[11px] tabular-nums" style={{ color: "var(--color-steel)" }}>
+                  {progress.covered} of {progress.total} topics
+                </span>
+              )}
+            </div>
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={progress?.total ?? 100}
+              aria-valuenow={done ? (progress?.total ?? 100) : (progress?.covered ?? 0)}
+              aria-label="Interview progress"
+              style={{ height: "4px", borderRadius: "99px", background: "rgba(0,0,0,0.07)", overflow: "hidden" }}
+            >
+              <motion.div
+                style={{ height: "100%", borderRadius: "99px", background: "var(--color-hudson-blue)" }}
+                initial={false}
+                animate={{ width: done ? "100%" : `${progress ? Math.round((progress.covered / progress.total) * 100) : 0}%` }}
+                transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+              />
+            </div>
+          </div>
+        )}
+
         {fatalError ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
             <div

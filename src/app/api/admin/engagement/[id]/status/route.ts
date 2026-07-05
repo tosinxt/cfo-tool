@@ -3,6 +3,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { verifyAdminForApi } from "@/lib/auth/verifyAdmin";
 import { appendEvent } from "@/lib/firebase/appendEvent";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendDeckReady } from "@/lib/email";
+import { DEMO_MODE } from "@/lib/demo";
 import type { EngagementStatus, EngagementEventType } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -55,6 +57,22 @@ export async function POST(
     actor.email,
     `Engagement marked as ${status}`
   );
+
+  // The intake confirmation promises "we'll email you when your deck is
+  // ready" — delivered is that moment. Email failure must not fail the
+  // status change.
+  if (status === "delivered" && !DEMO_MODE) {
+    const data = docSnap.data()!;
+    if (data.clientEmail && data.intakeToken) {
+      try {
+        await sendDeckReady(data.clientEmail, engagementId, data.intakeToken, data.intake?.companyName);
+      } catch (err) {
+        console.error("[admin/status] deck-ready email failed", err);
+      }
+    } else {
+      console.warn(`[admin/status] ${engagementId} delivered but missing clientEmail/intakeToken — no email sent`);
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

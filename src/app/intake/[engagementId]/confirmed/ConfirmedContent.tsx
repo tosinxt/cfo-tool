@@ -268,35 +268,21 @@ export default function ConfirmedContent({ engagementId, token }: { engagementId
           </div>
         </div>
 
-        {/* View deck CTA */}
-        {engagementId && token && (
-          <div style={{
-            textAlign: "center", marginTop: "28px",
-            opacity: mounted ? 1 : 0,
-            transition: "opacity 400ms ease 1600ms",
-          }}>
-            <a
-              href={`/deck/${engagementId}?token=${encodeURIComponent(token)}`}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: "8px",
-                padding: "10px 20px", borderRadius: "8px",
-                background: "rgba(255,255,255,0.8)", backdropFilter: "blur(12px)",
-                border: "1px solid rgba(0,129,192,0.25)",
-                color: "var(--color-hudson-blue)", fontSize: "13px", fontWeight: 600,
-                fontFamily: "var(--font-af)", textDecoration: "none",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                transition: "box-shadow 150ms, background 150ms",
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.95)"; (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.8)"; (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)"; }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4" />
-              </svg>
-              View your deck
-            </a>
-          </div>
-        )}
+        {/* The deck link arrives by email once delivered — no premature CTA here. */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+          marginTop: "28px",
+          opacity: mounted ? 1 : 0,
+          transition: "opacity 400ms ease 1600ms",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-hudson-blue)" strokeWidth="1.8">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7l9 6 9-6" />
+          </svg>
+          <span style={{ fontSize: "13px", color: "var(--color-steel)", fontFamily: "var(--font-af)" }}>
+            Keep an eye on your inbox — we&rsquo;ll email you the moment your deck is ready.
+          </span>
+        </div>
 
         {/* Footer */}
         <p style={{

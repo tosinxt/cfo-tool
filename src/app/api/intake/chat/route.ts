@@ -52,7 +52,9 @@ const completionSchema = z.object({
   threeYearProjections: z.string().min(10),
   raiseAmount: z.string().min(1),
   valuationExpectation: z.string().min(1),
-  useOfFunds: z.string().min(20),
+  // Floor matches the written form's allocation builder ("Sales: 100%"), so
+  // form-seeded answers don't get re-asked in chat.
+  useOfFunds: z.string().min(8),
   currentInvestors: z.string(),
 });
 
@@ -227,6 +229,7 @@ export async function POST(req: NextRequest) {
 
   const completion = completionSchema.safeParse(merged);
   const done = completion.success;
+  const missing = done ? [] : missingFields(merged);
 
   const interviewerMessages: { role: Role; content: string }[] = [{ role: "system", content: INTERVIEWER_PROMPT }];
 
@@ -236,7 +239,6 @@ export async function POST(req: NextRequest) {
       content: "Every field needed for the pitch deck has now been gathered. Do not ask another question — write a short, warm closing line telling the founder their answers are being put together into a draft.",
     });
   } else {
-    const missing = missingFields(merged);
     if (missing.length > 0) {
       interviewerMessages.push({
         role: "system",
@@ -259,10 +261,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "AI request failed" }, { status: 502 });
   }
 
+  const totalFields = Object.keys(completionSchema.shape).length;
   return NextResponse.json({
     message,
     collected: merged,
     done,
     finalData: done ? completion.data : undefined,
+    progress: { covered: totalFields - missing.length, total: totalFields },
   });
 }

@@ -52,6 +52,52 @@ const STAGE_OPTIONS = [
 interface Props { engagementId: string; token: string; }
 type FormInstance = UseFormReturn<AllStepData>;
 const STORAGE_KEY = (id: string) => `intake_draft_${id}`;
+// The AI interview persists its extracted fields under this key (see
+// IntakeChat.tsx) — read so a founder who switches to the written form
+// mid-interview keeps everything they already answered.
+const CHAT_STORAGE_KEY = (id: string) => `intake_chat_${id}`;
+
+const STAGE_VALUES = new Set(STAGE_OPTIONS.map(o => o.value));
+
+const PREFILL_STRING_KEYS = [
+  "clientName", "clientEmail", "companyName", "oneLiner", "sector", "stage",
+  "problem", "solution", "marketSize", "keyMetrics", "growthRate", "notableCustomers",
+  "currentRevenue", "burnRate", "runway", "threeYearProjections",
+  "raiseAmount", "valuationExpectation", "useOfFunds", "currentInvestors",
+] as const;
+
+// The chat stores model-extracted JSON, so sanitize rather than trust it.
+function readChatPrefill(engagementId: string): Partial<AllStepData> {
+  try {
+    const saved = localStorage.getItem(CHAT_STORAGE_KEY(engagementId));
+    if (!saved) return {};
+    const collected = (JSON.parse(saved) as { collected?: unknown }).collected;
+    if (!collected || typeof collected !== "object" || Array.isArray(collected)) return {};
+    const source = collected as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of PREFILL_STRING_KEYS) {
+      const v = source[key];
+      if (typeof v === "string" && v.trim()) out[key] = v;
+      else if (typeof v === "number") out[key] = String(v);
+    }
+    if (typeof out.stage === "string" && !STAGE_VALUES.has(out.stage)) delete out.stage;
+    if (Array.isArray(source.teamMembers)) {
+      const members = source.teamMembers
+        .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && !Array.isArray(m))
+        .map(m => ({
+          name: typeof m.name === "string" ? m.name : "",
+          role: typeof m.role === "string" ? m.role : "",
+          bio: typeof m.bio === "string" ? m.bio : "",
+        }))
+        .filter(m => m.name || m.role || m.bio)
+        .slice(0, 6);
+      if (members.length) out.teamMembers = members;
+    }
+    return out as Partial<AllStepData>;
+  } catch {
+    return {};
+  }
+}
 
 // ─── Animated checkmark ───────────────────────────────────────────────────────
 
@@ -451,11 +497,23 @@ const StyledSelect = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttribu
 
 // ─── Character count ring ─────────────────────────────────────────────────────
 
-function CharRing({ current, max }: { current: number; max: number }) {
+function CharRing({ current, max, min }: { current: number; max: number; min?: number }) {
   const r = 8; const circ = 2 * Math.PI * r;
-  const pct = Math.min(1, current / max);
+  // Below the required minimum the ring fills toward `min`, so the founder
+  // sees the bar to clear before Continue rejects the answer.
+  const belowMin = !!min && current < min;
+  const pct = belowMin ? Math.min(1, current / (min as number)) : Math.min(1, current / max);
   const over = current > max;
-  const color = over ? "#dc2626" : pct > 0.85 ? "#f59e0b" : "var(--color-hudson-blue)";
+  const untouched = belowMin && current === 0;
+  const color = over ? "#dc2626"
+    : untouched ? "#c4c9c4"
+    : belowMin ? "#f59e0b"
+    : pct > 0.85 ? "#f59e0b"
+    : "var(--color-hudson-blue)";
+  const label = belowMin
+    ? (untouched ? `at least ${min} characters` : `${current} / min ${min}`)
+    : `${current}/${max}`;
+  const labelColor = over ? "#dc2626" : untouched ? "#8a908a" : belowMin ? "#b45309" : "#5a5f5a";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "5px", justifyContent: "flex-end", marginTop: "5px" }}>
       <svg width="20" height="20" style={{ transform: "rotate(-90deg)" }}>
@@ -469,22 +527,24 @@ function CharRing({ current, max }: { current: number; max: number }) {
           style={{ strokeLinecap: "round" }}
         />
       </svg>
-      <span style={{ fontSize: "11px", fontFamily: "var(--font-af)", color: over ? "#dc2626" : "#5a5f5a", fontVariantNumeric: "tabular-nums" }}>
-        {current}/{max}
+      <span style={{ fontSize: "11px", fontFamily: "var(--font-af)", color: labelColor, fontVariantNumeric: "tabular-nums" }}>
+        {label}
       </span>
     </div>
   );
 }
 
-/** Textarea with live character count ring */
+/** Textarea with live character count ring. `minRequired` stays a custom prop
+ * (not the native minLength attr) so the browser's own validation tooltip
+ * never fires — the ring communicates the requirement instead. */
 const CharTextarea = React.forwardRef<
   HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { maxLength: number; currentLength: number; valid?: boolean }
->(function CharTextarea({ maxLength, currentLength, valid, ...props }, ref) {
+  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { maxLength: number; currentLength: number; minRequired?: number; valid?: boolean }
+>(function CharTextarea({ maxLength, currentLength, minRequired, valid, ...props }, ref) {
   return (
     <div>
       <StyledTextarea {...props} ref={ref} valid={valid} />
-      <CharRing current={currentLength} max={maxLength} />
+      <CharRing current={currentLength} max={maxLength} min={minRequired} />
     </div>
   );
 });
@@ -524,6 +584,21 @@ function QuickChips({ chips, onSelect }: { chips: string[]; onSelect: (chip: str
   );
 }
 
+// Shared pill styling — sector chips, stage pills, and slider presets must
+// all read as one system.
+function chipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
+    fontFamily: "var(--font-af)", cursor: "pointer",
+    transition: "all 150ms",
+    fontWeight: active ? 600 : 400,
+    color: active ? "var(--color-hudson-blue)" : "var(--color-steel)",
+    border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
+    background: active ? "rgba(0,129,192,0.08)" : "transparent",
+    minHeight: "36px",
+  };
+}
+
 // ─── PillSelect: chip grid + "Other" reveals text input ──────────────────────
 
 function PillSelect({
@@ -558,16 +633,7 @@ function PillSelect({
           return (
             <button
               key={chip} type="button" onClick={() => selectChip(chip)}
-              style={{
-                padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
-                fontFamily: "var(--font-af)", cursor: "pointer",
-                transition: "all 150ms",
-                fontWeight: active ? 600 : 400,
-                color: active ? "var(--color-hudson-blue)" : "var(--color-steel)",
-                border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
-                background: active ? "rgba(0,129,192,0.08)" : "transparent",
-                minHeight: "36px",
-              }}
+              style={chipStyle(active)}
             >
               {chip}
             </button>
@@ -575,16 +641,7 @@ function PillSelect({
         })}
         <button
           type="button" onClick={openOther}
-          style={{
-            padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
-            fontFamily: "var(--font-af)", cursor: "pointer",
-            transition: "all 150ms",
-            fontWeight: showOther ? 600 : 400,
-            color: showOther ? "var(--color-hudson-blue)" : "var(--color-steel)",
-            border: showOther ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
-            background: showOther ? "rgba(0,129,192,0.08)" : "transparent",
-            minHeight: "36px",
-          }}
+          style={chipStyle(showOther)}
         >
           Other
         </button>
@@ -649,16 +706,7 @@ function SliderPreset({
           return (
             <button
               key={p.value} type="button" onClick={() => selectPreset(p.value)}
-              style={{
-                padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
-                fontFamily: "var(--font-af)", cursor: "pointer",
-                transition: "all 150ms",
-                fontWeight: active ? 600 : 400,
-                color: active ? "var(--color-hudson-blue)" : "var(--color-steel)",
-                border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
-                background: active ? "rgba(0,129,192,0.08)" : "transparent",
-                minHeight: "36px",
-              }}
+              style={chipStyle(active)}
             >
               {p.label}
             </button>
@@ -666,16 +714,7 @@ function SliderPreset({
         })}
         <button
           type="button" onClick={openSlider}
-          style={{
-            padding: "8px 14px", borderRadius: "50px", fontSize: "13px",
-            fontFamily: "var(--font-af)", cursor: "pointer",
-            transition: "all 150ms",
-            fontWeight: showSlider ? 600 : 400,
-            color: showSlider ? "var(--color-hudson-blue)" : "var(--color-steel)",
-            border: showSlider ? "1.5px solid var(--color-hudson-blue)" : "1px solid #b0b5b0",
-            background: showSlider ? "rgba(0,129,192,0.08)" : "transparent",
-            minHeight: "36px",
-          }}
+          style={chipStyle(showSlider)}
         >
           Other
         </button>
@@ -710,22 +749,13 @@ function RadioPills({ name, form, options, error }: {
   const { field } = useController({ name, control: form.control });
   return (
     <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
         {options.map((opt) => {
           const active = field.value === opt.value;
           return (
             <button
               key={opt.value} type="button" onClick={() => field.onChange(opt.value)}
-              style={{
-                padding: "10px 20px", borderRadius: "50px", fontSize: "14px",
-                fontFamily: "var(--font-af)", fontWeight: active ? 500 : 400,
-                border: `1px solid ${active ? "var(--color-ink)" : "#c0c5c0"}`,
-                background: active ? "var(--color-ink)" : "transparent",
-                color: active ? "white" : "var(--color-steel)", cursor: "pointer",
-                transition: "all 180ms ease", minHeight: "44px",
-              }}
-              onMouseEnter={(e) => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-iron)"; el.style.color = "var(--color-ink)"; } }}
-              onMouseLeave={(e) => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c0c5c0"; el.style.color = "var(--color-iron)"; } }}
+              style={chipStyle(active)}
             >
               {opt.label}
             </button>
@@ -796,6 +826,7 @@ function StaggeredFields({ children }: { children: React.ReactNode }) {
 const SECTOR_CHIPS = ["SaaS", "FinTech", "HealthTech", "EdTech", "AI / ML", "DevTools", "Marketplace", "Consumer", "CleanTech", "PropTech"];
 const METRIC_CHIPS = ["ARR", "MRR", "NRR", "Churn", "Customers", "DAUs", "CAC", "LTV", "GMV", "Gross margin"];
 const FUNDS_CHIPS = ["Engineering", "Sales", "Marketing", "Operations", "Hiring", "R&D", "Infrastructure", "Working capital"];
+const ROLE_CHIPS = ["CEO & Co-Founder", "CTO & Co-Founder", "COO", "Head of Product", "Advisor"];
 
 function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { value: string; label: string }[] }) {
   const { register, setValue, formState: { errors, touchedFields } } = form;
@@ -850,7 +881,7 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
       >
         <CharTextarea
           {...register("oneLiner")}
-          id="oneLiner" rows={2} maxLength={160} currentLength={oneLiner.length}
+          id="oneLiner" rows={2} maxLength={160} currentLength={oneLiner.length} minRequired={10}
           placeholder="We help [who] do [what] without [pain]"
           valid={touchedFields.oneLiner && !errors.oneLiner && oneLiner.length > 10}
         />
@@ -874,6 +905,144 @@ function Step1({ form, stageOptions }: { form: FormInstance; stageOptions: { val
   );
 }
 
+// ─── Market size rows (TAM / SAM / SOM) ───────────────────────────────────────
+
+const MARKET_KEYS = [
+  { key: "TAM", sub: "Total market", placeholder: "50B" },
+  { key: "SAM", sub: "Serviceable", placeholder: "8B" },
+  { key: "SOM", sub: "Obtainable", placeholder: "400M" },
+] as const;
+
+function parseMarketSize(s: string): { tam: string; sam: string; som: string; note: string } {
+  const grab = (k: string) => {
+    // Round-trip format first ("TAM: $50B"), then loose narrative from the
+    // AI chat or an old draft ("$18B TAM (GRC software)").
+    const strict = s.match(new RegExp(`${k}:\\s*\\$?([^|]*)`, "i"));
+    if (strict) return strict[1].trim();
+    const loose = s.match(new RegExp(`\\$?([\\d.,]+\\s?[KMBkmb]?)\\s*${k}`, "i"));
+    return loose ? loose[1].replace(/\s/g, "") : "";
+  };
+  return {
+    tam: grab("TAM"), sam: grab("SAM"), som: grab("SOM"),
+    note: (s.match(/Note:\s*([^|]+)/i)?.[1] ?? "").trim(),
+  };
+}
+
+function serializeMarketSize(tam: string, sam: string, som: string, note: string): string {
+  const parts: string[] = [];
+  if (tam) parts.push(`TAM: $${tam}`);
+  if (sam) parts.push(`SAM: $${sam}`);
+  if (som) parts.push(`SOM: $${som}`);
+  if (note) parts.push(`Note: ${note}`);
+  return parts.join(" | ");
+}
+
+function MarketSizeRows({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { tam, sam, som, note } = parseMarketSize(value);
+  const vals: Record<string, string> = { TAM: tam, SAM: sam, SOM: som };
+
+  function set(key: string, v: string) {
+    const next = { ...vals, [key]: v.replace(/\|/g, "") };
+    onChange(serializeMarketSize(next.TAM, next.SAM, next.SOM, note));
+  }
+
+  return (
+    <div style={{ border: "1px solid #b8bdb8", borderRadius: "8px", overflow: "hidden" }}>
+      {MARKET_KEYS.map(({ key, sub, placeholder }) => (
+        <MarketRow
+          key={key} label={key} sub={sub} placeholder={placeholder}
+          value={vals[key]} onChange={(v) => set(key, v)}
+        />
+      ))}
+      {/* Optional context row */}
+      <div style={{ display: "flex", alignItems: "center", background: "rgba(248,249,248,0.7)" }}>
+        <span style={{
+          padding: "10px 14px", fontSize: "12px", color: "#5a5f5a",
+          fontFamily: "var(--font-af)", whiteSpace: "nowrap", borderRight: "1px solid #e0e4e0",
+          minWidth: "108px", boxSizing: "border-box",
+        }}>Context</span>
+        <input
+          type="text"
+          value={note}
+          placeholder="e.g. growing 22% YoY (optional)"
+          onChange={(e) => onChange(serializeMarketSize(tam, sam, som, e.target.value.replace(/\|/g, "")))}
+          style={{
+            flex: 1, padding: "10px 14px", fontSize: "16px",
+            fontFamily: "var(--font-af)", color: "var(--color-ink)",
+            background: "transparent", border: "none", outline: "none",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MarketRow({ label, sub, value, placeholder, onChange }: {
+  label: string; sub: string; value: string; placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+  const hasVal = value.trim().length > 0;
+
+  function handleBlur() {
+    setFocused(false);
+    // "50b", "$50B", or "50000000000" all settle to "50B"; free text like
+    // "18B (GRC software)" is left exactly as typed.
+    const n = normalizeMoney(value);
+    if (n && parseInt(n, 10) > 0) {
+      const abbr = abbreviateMoney(n).slice(1);
+      if (abbr !== value.trim()) onChange(abbr);
+    }
+  }
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center",
+      borderBottom: "1px solid #e0e4e0",
+      background: focused ? "rgba(0,129,192,0.025)" : "rgba(255,255,255,0.8)",
+      transition: "background 150ms",
+    }}>
+      {/* Label + plain-language subtitle */}
+      <span style={{
+        padding: "8px 14px", display: "flex", flexDirection: "column", gap: "1px",
+        borderRight: "1px solid #e0e4e0", minWidth: "108px", boxSizing: "border-box",
+      }}>
+        <span style={{ fontSize: "12px", fontWeight: 500, color: hasVal ? "var(--color-hudson-blue)" : "#5a5f5a", fontFamily: "var(--font-af)", transition: "color 200ms" }}>
+          {label}
+        </span>
+        <span style={{ fontSize: "10px", color: "#8a908a", fontFamily: "var(--font-af)", whiteSpace: "nowrap" }}>
+          {sub}
+        </span>
+      </span>
+
+      {/* $ prefix */}
+      <span style={{ padding: "0 4px 0 12px", color: "var(--color-iron)", fontSize: "14px", fontFamily: "var(--font-af)" }}>$</span>
+
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={handleBlur}
+        style={{
+          flex: 1, padding: "12px 12px 12px 2px", fontSize: "16px",
+          fontFamily: "var(--font-af)", color: "var(--color-ink)",
+          background: "transparent", border: "none", outline: "none", minWidth: 0,
+        }}
+        aria-label={`${label} — ${sub}`}
+      />
+
+      <div style={{ padding: "0 12px", opacity: hasVal ? 1 : 0, transition: "opacity 200ms" }}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="6.5" fill="#22c55e" />
+          <path d="M4.5 7l2 2L9.5 5.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function Step2({ form }: { form: FormInstance }) {
   const { register, formState: { errors, touchedFields } } = form;
   const problem = (useWatch({ control: form.control, name: "problem" }) as string) || "";
@@ -890,7 +1059,7 @@ function Step2({ form }: { form: FormInstance }) {
       >
         <CharTextarea
           {...register("problem")}
-          id="problem" rows={4} maxLength={600} currentLength={problem.length}
+          id="problem" rows={4} maxLength={600} currentLength={problem.length} minRequired={20}
           placeholder="What's broken, how often, and who feels it most?"
           valid={touchedFields.problem && !errors.problem && problem.length > 30}
         />
@@ -906,61 +1075,164 @@ function Step2({ form }: { form: FormInstance }) {
       >
         <CharTextarea
           {...register("solution")}
-          id="solution" rows={4} maxLength={600} currentLength={solution.length}
+          id="solution" rows={4} maxLength={600} currentLength={solution.length} minRequired={20}
           placeholder="Your approach, the key insight, why it works now"
           valid={touchedFields.solution && !errors.solution && solution.length > 30}
         />
       </Field>
 
       <Field
-        label="Market size" htmlFor="marketSize" required
-        hint="TAM → SAM → SOM. Investors want to see how you think about scope."
+        label="Market size" required
+        hint={'Estimates are fine — shorthand like "50b" works. Fill what you know; TAM alone is a start.'}
         error={errors.marketSize?.message}
         why="Market size frames the ceiling of the opportunity. Too small = not fundable. Too vague = not credible."
       >
-        <CharTextarea
-          {...register("marketSize")}
-          id="marketSize" rows={3} maxLength={400} currentLength={marketSize.length}
-          placeholder="$50B TAM (total market) · $8B SAM (serviceable) · $400M SOM (obtainable)"
-          valid={touchedFields.marketSize && !errors.marketSize && marketSize.length > 0}
-        />
-        <QuickChips
-          chips={["TAM: ", "SAM: ", "SOM: "]}
-          onSelect={(chip) => {
-            const current = marketSize.trim();
-            form.setValue("marketSize", current ? `${current}  ${chip}` : chip, { shouldValidate: false });
-          }}
+        <MarketSizeRows
+          value={marketSize}
+          onChange={(v) => form.setValue("marketSize", v, { shouldValidate: !!errors.marketSize, shouldTouch: true })}
         />
       </Field>
     </StaggeredFields>
   );
 }
 
+// ─── Key metrics builder ──────────────────────────────────────────────────────
+
+type MetricRowData = { label: string; value: string };
+
+const METRIC_PLACEHOLDERS: Record<string, string> = {
+  ARR: "$1.2M", MRR: "$100K", NRR: "118%", Churn: "2% monthly",
+  Customers: "480", DAUs: "12,000", CAC: "$1,200", LTV: "$28,000",
+  GMV: "$4M", "Gross margin": "78%",
+};
+
+function parseMetrics(s: string): MetricRowData[] {
+  if (!s.trim()) return [];
+  return s.split(/\s*·\s*/).map((part) => {
+    const m = part.match(/^([^:]{1,40}):\s*(.*)$/);
+    return m ? { label: m[1].trim(), value: m[2].trim() } : { label: part.trim(), value: "" };
+  }).filter((r) => r.label || r.value);
+}
+
+function serializeMetrics(rows: MetricRowData[]): string {
+  return rows
+    .filter((r) => r.label.trim() || r.value.trim())
+    .map((r) => (r.label.trim() && r.value.trim()
+      ? `${r.label.trim()}: ${r.value.trim()}`
+      : r.label.trim() || r.value.trim()))
+    .join(" · ");
+}
+
+function MetricsBuilder({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [rows, setRows] = useState<MetricRowData[]>(() => {
+    const parsed = parseMetrics(value);
+    return parsed.length ? parsed : [{ label: "", value: "" }];
+  });
+
+  function update(next: MetricRowData[]) {
+    setRows(next);
+    onChange(serializeMetrics(next));
+  }
+
+  function addRow(label = "") {
+    const next = [...rows];
+    const last = next[next.length - 1];
+    // Reuse a trailing empty row instead of stacking blanks.
+    if (last && !last.label.trim() && !last.value.trim()) next[next.length - 1] = { label, value: "" };
+    else next.push({ label, value: "" });
+    update(next);
+    const idx = next.length - 1;
+    setTimeout(() => document.getElementById(label ? `metric-value-${idx}` : `metric-label-${idx}`)?.focus(), 30);
+  }
+
+  function setField(i: number, key: "label" | "value", v: string) {
+    const next = [...rows];
+    next[i] = { ...next[i], [key]: v.replace(/·/g, "") };
+    update(next);
+  }
+
+  function removeRow(i: number) {
+    update(rows.length > 1 ? rows.filter((_, idx) => idx !== i) : [{ label: "", value: "" }]);
+  }
+
+  return (
+    <div>
+      <div style={{ border: "1px solid #b8bdb8", borderRadius: "8px", overflow: "hidden" }}>
+        {rows.map((row, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "center",
+            borderBottom: i < rows.length - 1 ? "1px solid #eaece9" : "none",
+            background: "rgba(255,255,255,0.85)",
+          }}>
+            <input
+              id={`metric-label-${i}`}
+              type="text"
+              value={row.label}
+              placeholder="Metric"
+              onChange={(e) => setField(i, "label", e.target.value)}
+              aria-label={`Metric ${i + 1} name`}
+              style={{ width: "38%", minWidth: 0, padding: "11px 14px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", borderRight: "1px solid #eaece9" }}
+            />
+            <input
+              id={`metric-value-${i}`}
+              type="text"
+              value={row.value}
+              placeholder={METRIC_PLACEHOLDERS[row.label] ?? "e.g. $1.2M or 15%"}
+              onChange={(e) => setField(i, "value", e.target.value)}
+              aria-label={`Metric ${i + 1} value`}
+              style={{ flex: 1, minWidth: 0, padding: "11px 14px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none" }}
+            />
+            {(rows.length > 1 || row.label || row.value) && (
+              <button type="button" onClick={() => removeRow(i)} aria-label={`Remove metric ${i + 1}`}
+                style={{ padding: "0 10px", alignSelf: "stretch", background: "transparent", border: "none", borderLeft: "1px solid #eaece9", cursor: "pointer", color: "#c4c9c4", transition: "color 140ms", fontSize: "14px", display: "flex", alignItems: "center" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#dc2626"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#c4c9c4"; }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* One tap adds a labeled row ready for its number */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "8px", alignItems: "center" }}>
+        {METRIC_CHIPS.filter((c) => !rows.some((r) => r.label.trim().toLowerCase() === c.toLowerCase())).map((chip) => (
+          <button key={chip} type="button" onClick={() => addRow(chip)}
+            style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "var(--color-iron)", border: "1px solid #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
+            onMouseEnter={(e) => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; }}
+            onMouseLeave={(e) => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; }}
+          >+ {chip}</button>
+        ))}
+        <button type="button" onClick={() => addRow()}
+          style={{ padding: "4px 10px", borderRadius: "50px", fontSize: "11px", fontFamily: "var(--font-af)", fontWeight: 500, color: "#5a5f5a", border: "1px dashed #c4c9c4", background: "transparent", cursor: "pointer", transition: "all 140ms" }}
+          onMouseEnter={(e) => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; }}
+          onMouseLeave={(e) => { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "#5a5f5a"; }}
+        >+ Custom</button>
+      </div>
+    </div>
+  );
+}
+
 function Step3({ form }: { form: FormInstance }) {
-  const { register, setValue, formState: { errors, touchedFields } } = form;
+  const { register, formState: { errors, touchedFields } } = form;
   const keyMetrics = (useWatch({ control: form.control, name: "keyMetrics" }) as string) || "";
   const growthRate = (useWatch({ control: form.control, name: "growthRate" }) as string) || "";
-
-  function appendMetric(chip: string) {
-    const current = keyMetrics.trim();
-    setValue("keyMetrics", current ? `${current}, ${chip}: ` : `${chip}: `, { shouldValidate: false });
-  }
 
   return (
     <StaggeredFields>
       <Field
-        label="Key metrics" htmlFor="keyMetrics" required
-        hint="The numbers that tell your growth story."
+        label="Key metrics" required
+        hint="Tap a metric, drop the number in. These are the proof behind your growth story."
         error={errors.keyMetrics?.message}
         why="Metrics are the proof behind the narrative. Investors pattern-match against benchmarks — give them something to anchor."
       >
-        <CharTextarea
-          {...register("keyMetrics")}
-          id="keyMetrics" rows={4} maxLength={500} currentLength={keyMetrics.length}
-          placeholder="$1.2M ARR · 500 customers · 92% NRR · 15% MoM"
-          valid={touchedFields.keyMetrics && !errors.keyMetrics && keyMetrics.length > 10}
+        <MetricsBuilder
+          value={keyMetrics}
+          onChange={(v) => form.setValue("keyMetrics", v, { shouldValidate: !!errors.keyMetrics, shouldTouch: true })}
         />
-        <QuickChips chips={METRIC_CHIPS} onSelect={appendMetric} />
       </Field>
 
       <Field
@@ -1130,13 +1402,19 @@ function TeamMemberRow({ index, form, onRemove, expanded, onToggle, showRemove, 
         <div style={{ overflow: "hidden" }}>
           <div style={{ padding: "0 14px 16px", borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
 
-            {/* Name + Role side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            {/* Name + Role side by side (stacked on small screens) */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Name" htmlFor={nameId} required error={teamErrors?.[index]?.name?.message}>
                 <StyledInput {...register(`teamMembers.${index}.name`)} id={nameId} placeholder="Jane Smith" autoComplete="name" />
               </Field>
               <Field label="Role / title" htmlFor={roleId} required error={teamErrors?.[index]?.role?.message}>
                 <StyledInput {...register(`teamMembers.${index}.role`)} id={roleId} placeholder="CEO & Co-Founder" autoComplete="organization-title" />
+                {!role.trim() && (
+                  <QuickChips
+                    chips={ROLE_CHIPS}
+                    onSelect={(c) => form.setValue(`teamMembers.${index}.role`, c, { shouldValidate: true, shouldTouch: true })}
+                  />
+                )}
               </Field>
             </div>
 
@@ -1153,8 +1431,8 @@ function TeamMemberRow({ index, form, onRemove, expanded, onToggle, showRemove, 
                   placeholder="Prior wins, relevant experience, why they're the one…"
                   valid={!teamErrors?.[index]?.bio && bio.length >= 10}
                 />
-                <div style={{ position: "absolute", bottom: "8px", right: "10px", fontSize: "10px", color: bio.length > BIO_MAX * 0.85 ? (bio.length >= BIO_MAX ? "#dc2626" : "#f59e0b") : "#b0b5b0", fontFamily: "var(--font-af)", pointerEvents: "none", fontVariantNumeric: "tabular-nums" }}>
-                  {bio.length}/{BIO_MAX}
+                <div style={{ position: "absolute", bottom: "8px", right: "10px", fontSize: "10px", color: bio.length < 10 ? (bio.length === 0 ? "#b0b5b0" : "#b45309") : bio.length > BIO_MAX * 0.85 ? (bio.length >= BIO_MAX ? "#dc2626" : "#f59e0b") : "#b0b5b0", fontFamily: "var(--font-af)", pointerEvents: "none", fontVariantNumeric: "tabular-nums" }}>
+                  {bio.length < 10 ? `${bio.length} / min 10` : `${bio.length}/${BIO_MAX}`}
                 </div>
               </div>
             </Field>
@@ -1252,8 +1530,13 @@ function ProjectionRows({ value, onChange }: { value: string; onChange: (v: stri
   };
   const [y1, y2, y3, note] = parse(value);
 
+  // Only filled years — an all-placeholder skeleton would both pass the
+  // min-length validation with no data and pollute the deck string.
   const serialize = (a: string, b: string, c: string, n: string) => {
-    const parts = [`Year 1: $${a}`, `Year 2: $${b}`, `Year 3: $${c}`];
+    const parts: string[] = [];
+    if (a) parts.push(`Year 1: $${a}`);
+    if (b) parts.push(`Year 2: $${b}`);
+    if (c) parts.push(`Year 3: $${c}`);
     if (n) parts.push(`Note: ${n}`);
     return parts.join(" | ");
   };
@@ -1316,6 +1599,28 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
 }) {
   const [focused, setFocused] = useState(false);
   const hasVal = value.trim().length > 0;
+  const digits = normalizeMoney(value);
+  const echo = digits && parseInt(digits, 10) >= 1000 ? abbreviateMoney(digits) : "";
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value;
+    const plain = raw.replace(/,/g, "");
+    // Same live-grouping rule as MoneyField: regroup while appending, leave
+    // mid-string edits alone so the cursor stays put; blur cleans up.
+    if (onlyDigits(plain) && e.target.selectionStart === raw.length) {
+      onChange(formatThousands(plain));
+    } else {
+      onChange(raw);
+    }
+  }
+
+  function handleBlur() {
+    setFocused(false);
+    const normalized = normalizeMoney(value);
+    if (normalized && value.trim() !== formatThousands(normalized)) {
+      onChange(formatThousands(normalized));
+    }
+  }
   return (
     <div style={{
       display: "flex", alignItems: "center",
@@ -1341,9 +1646,9 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
         inputMode="decimal"
         value={value}
         placeholder={placeholder}
-        onChange={e => onChange(e.target.value)}
+        onChange={handleChange}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={handleBlur}
         style={{
           flex: 1, padding: "12px 12px 12px 2px", fontSize: "16px",
           fontFamily: "var(--font-af)", color: "var(--color-ink)",
@@ -1351,7 +1656,12 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
         }}
       />
 
-      {/* Validated indicator */}
+      {/* Abbreviated echo + validated indicator */}
+      {echo && (
+        <span style={{ fontSize: "11px", color: "#8a908a", fontFamily: "var(--font-af)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>
+          = {echo}
+        </span>
+      )}
       <div style={{ padding: "0 12px", opacity: hasVal ? 1 : 0, transition: "opacity 200ms" }}>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <circle cx="7" cy="7" r="6.5" fill="#22c55e" />
@@ -1363,34 +1673,38 @@ function ProjectionRow({ year, value, placeholder, onChange, isLast }: {
 }
 
 function Step5({ form }: { form: FormInstance }) {
-  const { register, formState: { errors, touchedFields } } = form;
+  const { formState: { errors, touchedFields } } = form;
   const projections = (useWatch({ control: form.control, name: "threeYearProjections" }) as string) || "";
-  const currentRevenue = (useWatch({ control: form.control, name: "currentRevenue" }) as string) || "";
-  const burnRate = (useWatch({ control: form.control, name: "burnRate" }) as string) || "";
   const runway = (useWatch({ control: form.control, name: "runway" }) as string) || "";
 
   return (
     <StaggeredFields>
-      <div className="grid grid-cols-2 gap-4">
+      <p className="text-[12px]" style={{ color: "#5a5f5a", fontFamily: "var(--font-af)", lineHeight: 1.5 }}>
+        Shorthand works in any dollar field — type “1.5m” for $1,500,000.
+      </p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Current ARR / revenue" htmlFor="currentRevenue" error={errors.currentRevenue?.message} required
           why="Investors need a baseline to assess growth rate and funding efficiency."
         >
-          <InputAdornment prefix="$">
-            <StyledInput {...register("currentRevenue")} id="currentRevenue" placeholder="1,500,000" inputMode="decimal" autoComplete="off"
-              valid={touchedFields.currentRevenue && !errors.currentRevenue && currentRevenue.length > 0}
-              style={{ paddingLeft: "24px" }}
-            />
-          </InputAdornment>
+          <MoneyField form={form} name="currentRevenue" id="currentRevenue" placeholder="1,500,000"
+            chips={[
+              { label: "Pre-revenue", value: "0" },
+              { label: "$500K", value: "500000" },
+              { label: "$1M", value: "1000000" },
+              { label: "$5M", value: "5000000" },
+            ]}
+          />
         </Field>
         <Field label="Monthly burn" htmlFor="burnRate" error={errors.burnRate?.message} required
           why="Burn rate tells investors how much runway your raise buys and how capital-efficient you are."
         >
-          <InputAdornment prefix="$" suffix="/mo">
-            <StyledInput {...register("burnRate")} id="burnRate" placeholder="120,000" inputMode="decimal" autoComplete="off"
-              valid={touchedFields.burnRate && !errors.burnRate && burnRate.length > 0}
-              style={{ paddingLeft: "24px", paddingRight: "44px" }}
-            />
-          </InputAdornment>
+          <MoneyField form={form} name="burnRate" id="burnRate" placeholder="120,000" suffix="/mo"
+            chips={[
+              { label: "$50K", value: "50000" },
+              { label: "$100K", value: "100000" },
+              { label: "$250K", value: "250000" },
+            ]}
+          />
         </Field>
       </div>
 
@@ -1424,57 +1738,140 @@ function Step5({ form }: { form: FormInstance }) {
       >
         <ProjectionRows
           value={projections}
-          onChange={v => form.setValue("threeYearProjections", v, { shouldValidate: true, shouldTouch: true })}
+          onChange={v => form.setValue("threeYearProjections", v, { shouldValidate: !!errors.threeYearProjections, shouldTouch: true })}
         />
       </Field>
     </StaggeredFields>
   );
 }
 
-// ─── Amount quick-select chips ────────────────────────────────────────────────
+// ─── Money input ──────────────────────────────────────────────────────────────
 
-function parseAmount(label: string): string {
-  const s = label.replace(/^\$/, "").trim();
-  if (/K$/i.test(s)) return String(parseFloat(s) * 1_000);
-  if (/M$/i.test(s)) return String(parseFloat(s) * 1_000_000);
-  if (/B$/i.test(s)) return String(parseFloat(s) * 1_000_000_000);
-  return s.replace(/[^0-9.]/g, "");
+function onlyDigits(s: string): boolean {
+  return /^\d+$/.test(s);
 }
 
-function AmountChips({ amounts, currentValue, inputId, onSelect }: {
-  amounts: string[]; currentValue?: string; inputId?: string; onSelect: (v: string) => void;
+function formatThousands(digits: string): string {
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+// Accepts "5m", "500k", "1.2b", "$5,000,000" → plain integer digit string.
+// Returns "" when the text isn't a single parseable amount.
+function normalizeMoney(raw: string): string {
+  const s = raw.replace(/[$,\s]/g, "").toLowerCase();
+  if (!s) return "";
+  const m = s.match(/^(\d+(?:\.\d+)?)([kmb])?$/);
+  if (!m) return "";
+  const mult = m[2] === "k" ? 1e3 : m[2] === "m" ? 1e6 : m[2] === "b" ? 1e9 : 1;
+  const n = Math.round(parseFloat(m[1]) * mult);
+  return isFinite(n) ? String(n) : "";
+}
+
+function abbreviateMoney(digits: string): string {
+  const n = parseInt(digits, 10);
+  if (!isFinite(n)) return "";
+  const fmt = (v: number, suffix: string) => `$${parseFloat(v.toFixed(1))}${suffix}`;
+  if (n >= 1e9) return fmt(n / 1e9, "B");
+  if (n >= 1e6) return fmt(n / 1e6, "M");
+  if (n >= 1e3) return fmt(n / 1e3, "K");
+  return `$${n}`;
+}
+
+// Dollar input that groups thousands as you type, expands "1.5m"-style
+// shorthand on blur, echoes the abbreviated amount so founders never count
+// zeros, and offers one-tap presets. Form state holds plain digit strings.
+function MoneyField({ form, name, id, placeholder, suffix, chips }: {
+  form: FormInstance; name: keyof AllStepData; id: string; placeholder: string;
+  suffix?: string; chips?: { label: string; value: string }[];
 }) {
-  const parsedAmounts = amounts.map(a => ({ label: a, value: parseAmount(a) }));
-  const isCustom = (currentValue ?? "").length > 0 && !parsedAmounts.some(p => p.value === currentValue);
+  const { field, fieldState } = useController({ name, control: form.control });
+  const stored = typeof field.value === "string" ? field.value : "";
+  const [text, setText] = useState(() => (onlyDigits(stored) ? formatThousands(stored) : stored));
+  const dirtyRef = useRef(false);
+
+  function applyValue(v: string) {
+    field.onChange(v);
+    setText(onlyDigits(v) ? formatThousands(v) : v);
+    dirtyRef.current = false;
+    field.onBlur();
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    dirtyRef.current = true;
+    const raw = e.target.value;
+    const plain = raw.replace(/,/g, "");
+    if (onlyDigits(plain)) {
+      // Regroup commas live only when typing at the end — mid-string edits
+      // keep the raw text so the cursor doesn't jump; blur cleans up.
+      const atEnd = e.target.selectionStart === raw.length;
+      setText(atEnd ? formatThousands(plain) : raw);
+      field.onChange(plain);
+    } else {
+      setText(raw);
+      field.onChange(normalizeMoney(raw) || raw);
+    }
+  }
+
+  function handleBlur() {
+    if (dirtyRef.current) {
+      const normalized = normalizeMoney(text);
+      if (normalized) {
+        field.onChange(normalized);
+        setText(formatThousands(normalized));
+      }
+    }
+    field.onBlur();
+  }
+
+  const digits = onlyDigits(stored) ? stored : "";
+  const echo = digits && parseInt(digits, 10) >= 1000 ? abbreviateMoney(digits) : "";
+  const valid = fieldState.isTouched && !fieldState.invalid && stored.length > 0;
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
-      {parsedAmounts.map(({ label, value }) => {
-        const active = currentValue === value;
-        return (
-          <button key={label} type="button" onClick={() => onSelect(value)}
-            style={{
-              padding: "4px 10px", borderRadius: "50px", fontSize: "11px",
-              fontFamily: "var(--font-af)", fontWeight: active ? 600 : 500, cursor: "pointer", transition: "all 140ms",
-              color: active ? "var(--color-hudson-blue)" : "var(--color-iron)",
-              border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #c4c9c4",
-              background: active ? "rgba(0,129,192,0.08)" : "transparent",
-            }}
-            onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; } }}
-            onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; } }}
-          >{label}</button>
-        );
-      })}
-      <button type="button"
-        style={{
-          padding: "4px 10px", borderRadius: "50px", fontSize: "11px",
-          fontFamily: "var(--font-af)", fontWeight: isCustom ? 600 : 500, cursor: "pointer", transition: "all 140ms",
-          color: isCustom ? "var(--color-hudson-blue)" : "var(--color-iron)",
-          border: isCustom ? "1.5px solid var(--color-hudson-blue)" : "1px solid #c4c9c4",
-          background: isCustom ? "rgba(0,129,192,0.08)" : "transparent",
-        }}
-        onClick={() => inputId && document.getElementById(inputId)?.focus()}
-      >Other</button>
+    <div>
+      <InputAdornment prefix="$" suffix={suffix}>
+        <StyledInput
+          id={id}
+          name={field.name}
+          ref={field.ref}
+          value={text}
+          placeholder={placeholder}
+          inputMode="decimal"
+          autoComplete="off"
+          valid={valid}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          style={{ paddingLeft: "24px", ...(suffix ? { paddingRight: "44px" } : {}) }}
+        />
+      </InputAdornment>
+      <div style={{ height: "16px", marginTop: "3px", textAlign: "right" }}>
+        {echo && (
+          <motion.span
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}
+            style={{ fontSize: "11px", color: "#5a5f5a", fontFamily: "var(--font-af)", fontVariantNumeric: "tabular-nums" }}
+          >= {echo}</motion.span>
+        )}
+      </div>
+      {chips && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "2px" }}>
+          {chips.map(({ label, value }) => {
+            const active = stored === value;
+            return (
+              <button key={label} type="button" onClick={() => applyValue(value)}
+                style={{
+                  padding: "4px 10px", borderRadius: "50px", fontSize: "11px",
+                  fontFamily: "var(--font-af)", fontWeight: active ? 600 : 500, cursor: "pointer", transition: "all 140ms",
+                  color: active ? "var(--color-hudson-blue)" : "var(--color-iron)",
+                  border: active ? "1.5px solid var(--color-hudson-blue)" : "1px solid #c4c9c4",
+                  background: active ? "rgba(0,129,192,0.08)" : "transparent",
+                }}
+                onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "var(--color-hudson-blue)"; el.style.color = "var(--color-hudson-blue)"; el.style.background = "rgba(0,129,192,0.05)"; } }}
+                onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLButtonElement; el.style.borderColor = "#c4c9c4"; el.style.color = "var(--color-iron)"; el.style.background = "transparent"; } }}
+              >{label}</button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1492,7 +1889,9 @@ function parseAllocations(s: string): AllocRow[] {
 }
 
 function serializeAllocations(rows: AllocRow[]): string {
-  return rows.filter(r => r.category).map(r => `${r.category}: ${r.pct}%`).join("\n");
+  // Only complete rows — a category without a percentage would emit
+  // "Sales: %" junk into the deck data.
+  return rows.filter(r => r.category.trim() && r.pct).map(r => `${r.category.trim()}: ${r.pct}%`).join("\n");
 }
 
 function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -1511,7 +1910,15 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
   }
 
   function addRow(category = "") {
-    update([...rows, { category, pct: "" }]);
+    // Fill an existing empty row before appending a new one, then put the
+    // cursor in that row's % field so the next keystroke is the number.
+    const next = [...rows];
+    const emptyIdx = next.findIndex(r => !r.category.trim() && !r.pct);
+    const target = category && emptyIdx !== -1 ? emptyIdx : next.length;
+    if (target === next.length) next.push({ category, pct: "" });
+    else next[target] = { ...next[target], category };
+    update(next);
+    setTimeout(() => document.getElementById(`alloc-pct-${target}`)?.focus(), 30);
   }
 
   function removeRow(i: number) {
@@ -1526,6 +1933,18 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
     const next = [...rows]; next[i] = { ...next[i], pct: v }; update(next);
   }
 
+  // One tap instead of mental math: pour whatever is left of the 100% into
+  // the last row.
+  function balanceToHundred() {
+    const last = rows.length - 1;
+    const sumOthers = rows.reduce((s, r, i) => (i === last ? s : s + (parseInt(r.pct) || 0)), 0);
+    const remainder = 100 - sumOthers;
+    if (remainder <= 0) return;
+    const next = [...rows];
+    next[last] = { ...next[last], pct: String(remainder) };
+    update(next);
+  }
+
   return (
     <div>
       <div style={{ border: "1px solid #b8bdb8", borderRadius: "8px", overflow: "hidden" }}>
@@ -1538,16 +1957,18 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
             <input
               type="text"
               value={row.category}
-              placeholder={FUNDS_CHIPS[i] ?? "Category"}
+              placeholder={FUNDS_CHIPS[i] ? `e.g. ${FUNDS_CHIPS[i]}` : "Category"}
               onChange={e => setCategory(i, e.target.value)}
               style={{ flex: 1, padding: "11px 14px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none" }}
             />
             <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "0 12px", borderLeft: "1px solid #eaece9", flexShrink: 0 }}>
               <input
+                id={`alloc-pct-${i}`}
                 type="text"
                 inputMode="numeric"
                 value={row.pct}
                 placeholder="0"
+                aria-label={`${row.category || `Category ${i + 1}`} percentage`}
                 onChange={e => setPct(i, e.target.value.replace(/[^0-9]/g, ""))}
                 style={{ width: "44px", fontSize: "16px", fontFamily: "var(--font-af)", color: "var(--color-ink)", background: "transparent", border: "none", outline: "none", textAlign: "right", fontVariantNumeric: "tabular-nums" }}
               />
@@ -1568,10 +1989,24 @@ function AllocationBuilder({ value, onChange }: { value: string; onChange: (v: s
         ))}
 
         {/* Total row */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "rgba(0,0,0,0.025)", borderTop: "1px solid #eaece9" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "8px 14px", background: "rgba(0,0,0,0.025)", borderTop: "1px solid #eaece9" }}>
           <span style={{ fontSize: "11px", color: "#5a5f5a", fontFamily: "var(--font-af)", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>Total</span>
-          <span style={{ fontSize: "13px", fontWeight: 600, fontFamily: "var(--font-af)", fontVariantNumeric: "tabular-nums", color: totalOk ? "#22c55e" : totalOver ? "#dc2626" : "var(--color-ink)", transition: "color 200ms" }}>
-            {total}%{totalOk && " ✓"}
+          <span style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {total < 100 && rows.some(r => r.category.trim()) && (
+              <button
+                type="button" onClick={balanceToHundred}
+                style={{
+                  background: "none", border: "none", padding: 0, cursor: "pointer",
+                  fontSize: "11px", fontWeight: 500, fontFamily: "var(--font-af)",
+                  color: "var(--color-hudson-blue)", textDecoration: "underline", textUnderlineOffset: "2px",
+                }}
+              >
+                Balance to 100%
+              </button>
+            )}
+            <span style={{ fontSize: "13px", fontWeight: 600, fontFamily: "var(--font-af)", fontVariantNumeric: "tabular-nums", color: totalOk ? "#22c55e" : totalOver ? "#dc2626" : "var(--color-ink)", transition: "color 200ms" }}>
+              {total}%{totalOk && " ✓"}
+            </span>
           </span>
         </div>
       </div>
@@ -1647,37 +2082,36 @@ function TagInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 function Step6({ form }: { form: FormInstance }) {
-  const { register, setValue, formState: { errors, touchedFields } } = form;
+  const { setValue, formState: { errors } } = form;
   const useOfFunds = (useWatch({ control: form.control, name: "useOfFunds" }) as string) || "";
-  const raiseAmount = (useWatch({ control: form.control, name: "raiseAmount" }) as string) || "";
-  const valuation   = (useWatch({ control: form.control, name: "valuationExpectation" }) as string) || "";
   const investors   = (useWatch({ control: form.control, name: "currentInvestors" }) as string) || "";
 
   return (
     <StaggeredFields>
       {/* Raise + Valuation with quick-select chips */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Raise amount" htmlFor="raiseAmount" error={errors.raiseAmount?.message} required
           why="Investors need to know whether the deal size fits their fund and check size."
         >
-          <InputAdornment prefix="$">
-            <StyledInput {...register("raiseAmount")} id="raiseAmount" placeholder="5,000,000" inputMode="decimal" autoComplete="off"
-              valid={touchedFields.raiseAmount && !errors.raiseAmount && raiseAmount.length > 0}
-              style={{ paddingLeft: "24px" }}
-            />
-          </InputAdornment>
-          <AmountChips amounts={["$500K", "$1M", "$2M", "$5M", "$10M", "$20M"]} currentValue={raiseAmount} inputId="raiseAmount" onSelect={v => { setValue("raiseAmount", v, { shouldValidate: true, shouldTouch: true }); }} />
+          <MoneyField form={form} name="raiseAmount" id="raiseAmount" placeholder="5,000,000"
+            chips={[
+              { label: "$1M", value: "1000000" },
+              { label: "$2M", value: "2000000" },
+              { label: "$5M", value: "5000000" },
+              { label: "$10M", value: "10000000" },
+            ]}
+          />
         </Field>
         <Field label="Pre-money valuation" htmlFor="valuationExpectation" error={errors.valuationExpectation?.message} required
           why="Valuation sets the terms conversation. State your expectation clearly — investors appreciate directness."
         >
-          <InputAdornment prefix="$">
-            <StyledInput {...register("valuationExpectation")} id="valuationExpectation" placeholder="25,000,000" inputMode="decimal" autoComplete="off"
-              valid={touchedFields.valuationExpectation && !errors.valuationExpectation && valuation.length > 0}
-              style={{ paddingLeft: "24px" }}
-            />
-          </InputAdornment>
-          <AmountChips amounts={["$5M", "$10M", "$20M", "$50M", "$100M"]} currentValue={valuation} inputId="valuationExpectation" onSelect={v => { setValue("valuationExpectation", v, { shouldValidate: true, shouldTouch: true }); }} />
+          <MoneyField form={form} name="valuationExpectation" id="valuationExpectation" placeholder="25,000,000"
+            chips={[
+              { label: "$10M", value: "10000000" },
+              { label: "$20M", value: "20000000" },
+              { label: "$50M", value: "50000000" },
+            ]}
+          />
         </Field>
       </div>
 
@@ -1689,7 +2123,7 @@ function Step6({ form }: { form: FormInstance }) {
       >
         <AllocationBuilder
           value={useOfFunds}
-          onChange={v => setValue("useOfFunds", v, { shouldValidate: true, shouldTouch: true })}
+          onChange={v => setValue("useOfFunds", v, { shouldValidate: !!errors.useOfFunds, shouldTouch: true })}
         />
       </Field>
 
@@ -1716,13 +2150,20 @@ export default function IntakeForm({ engagementId, token }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
-  const [collected, setCollected] = useState<Partial<AllStepData>>(() => {
-    if (typeof window === "undefined") return {};
+  // Form draft wins over chat prefill: a field the founder touched (or
+  // cleared) on the form must never be resurrected by the AI's extraction.
+  const [{ collected: initialCollected, carriedFromChat }] = useState(() => {
+    if (typeof window === "undefined") return { collected: {} as Partial<AllStepData>, carriedFromChat: 0 };
+    let draft: Partial<AllStepData> = {};
     try {
       const saved = localStorage.getItem(STORAGE_KEY(engagementId));
-      return saved ? (JSON.parse(saved) as Partial<AllStepData>) : {};
-    } catch { return {}; }
+      if (saved) draft = JSON.parse(saved) as Partial<AllStepData>;
+    } catch { /* ignore */ }
+    const prefill = readChatPrefill(engagementId);
+    const carried = Object.keys(prefill).filter(k => !(k in draft)).length;
+    return { collected: { ...prefill, ...draft }, carriedFromChat: carried };
   });
+  const [collected, setCollected] = useState<Partial<AllStepData>>(initialCollected);
 
   const form: FormInstance = useForm<AllStepData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1771,7 +2212,9 @@ export default function IntakeForm({ engagementId, token }: Props) {
         throw new Error(error ?? "Submission failed");
       }
       localStorage.removeItem(STORAGE_KEY(engagementId));
-      router.push(`/deck/${engagementId}?token=${encodeURIComponent(token)}`);
+      // The deck isn't ready at submit time — land on the confirmation page;
+      // the client gets an email with the deck link when it's delivered.
+      router.push(`/intake/${engagementId}/confirmed?token=${encodeURIComponent(token)}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong");
       setSubmitting(false);
@@ -1783,6 +2226,31 @@ export default function IntakeForm({ engagementId, token }: Props) {
     setDirection(-1);
     setStep((s) => s - 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Autofocus the first field of each step — desktop only, so the mobile
+  // keyboard doesn't pop over the step heading. Delayed past the step
+  // entrance animation.
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const t = setTimeout(() => {
+      const candidates = formRef.current?.querySelectorAll<HTMLElement>('input:not([type="range"]), textarea');
+      // Skip fields hidden inside collapsed team cards (height-clipped, not display:none).
+      const visible = Array.from(candidates ?? []).find((el) => el.getBoundingClientRect().height > 0);
+      visible?.focus({ preventScroll: true });
+    }, 340);
+    return () => clearTimeout(t);
+  }, [step]);
+
+  // RHF focuses the first registered field on failed validation, but fields
+  // driven via setValue (sliders, pills, builders) have no input to focus —
+  // scroll the first visible error into view once it renders.
+  function handleInvalid() {
+    setTimeout(() => {
+      formRef.current?.querySelector('[role="alert"]')?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
   }
 
   const slideVariants = {
@@ -1839,8 +2307,26 @@ export default function IntakeForm({ engagementId, token }: Props) {
           className="mb-4 inline-block text-[11px] underline underline-offset-2"
           style={{ color: "var(--color-fog)", textDecorationColor: "rgba(0,0,0,0.2)" }}
         >
-          Prefer a quick chat instead?
+          Prefer a quick chat instead? Your answers carry over.
         </a>
+
+        {carriedFromChat > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="mb-4 flex items-center gap-2.5 rounded-[10px] px-3.5 py-2.5"
+            style={{ background: "rgba(0,129,192,0.07)", border: "1px solid rgba(0,129,192,0.22)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+              <circle cx="7" cy="7" r="6.5" fill="rgba(0,129,192,0.12)" />
+              <path d="M4.2 7l2 2 3.6-4" stroke="var(--color-hudson-blue)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p className="text-[12px] leading-[1.5]" style={{ color: "var(--color-hudson-blue)", fontFamily: "var(--font-af)" }}>
+              {carriedFromChat} answer{carriedFromChat === 1 ? "" : "s"} carried over from your AI interview — review and edit anything below.
+            </p>
+          </motion.div>
+        )}
 
         {/* Segmented progress bar */}
         <SegmentedProgress step={step} total={STEPS.length} />
@@ -1895,7 +2381,16 @@ export default function IntakeForm({ engagementId, token }: Props) {
 
         {/* Glassmorphic form card */}
         <form
-          onSubmit={form.handleSubmit(handleNext)}
+          ref={formRef}
+          onSubmit={form.handleSubmit(handleNext, handleInvalid)}
+          onKeyDown={(e) => {
+            // Cmd/Ctrl+Enter advances from anywhere, including textareas
+            // (plain Enter already advances from single-line inputs).
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !submitting) {
+              e.preventDefault();
+              e.currentTarget.requestSubmit();
+            }
+          }}
           className="rounded-[16px] p-6 sm:p-8"
           style={{
             background: "rgba(255,255,255,0.75)",

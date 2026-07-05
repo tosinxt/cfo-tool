@@ -44,7 +44,10 @@ export const step5Schema = z.object({
 export const step6Schema = z.object({
   raiseAmount: z.string().min(1, "Raise amount is required"),
   valuationExpectation: z.string().min(1, "Valuation expectation is required"),
-  useOfFunds: z.string().min(20, "Please describe how you'll use the funds"),
+  // The allocation builder serializes e.g. "Sales: 100%" (11 chars) — the
+  // floor must accept a single short category. Server mirrors this in
+  // src/app/api/intake/submit/route.ts.
+  useOfFunds: z.string().min(8, "Add at least one category with its percentage"),
   currentInvestors: z.string(),
 });
 
