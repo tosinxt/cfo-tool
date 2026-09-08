@@ -63,7 +63,7 @@ const FIELD_SPEC = `
 - clientEmail (string, valid email): the interviewee's email
 - companyName (string)
 - oneLiner (string, 10-200 chars): one-sentence pitch
-- sector (string): industry / category
+- sector (string): industry / category. If the founder's own description (one-liner, problem, solution) already makes this obvious, don't ask it as a blind open question — state your inference and ask them to confirm or correct it in one sentence.
 - stage (one of: "pre-seed", "seed", "series-a", "series-b+")
 - problem (string, 20+ chars): the pain being solved
 - solution (string, 20+ chars): how the product solves it
@@ -74,7 +74,7 @@ const FIELD_SPEC = `
 - teamMembers (array of {name, role, bio}, 1-6 entries, each field non-empty, bio should be a real sentence)
 - currentRevenue (string): current ARR/revenue, numeric-ish
 - burnRate (string): monthly burn, numeric-ish
-- runway (string): months of runway, numeric-ish
+- runway (string): months of runway, numeric-ish. If you need to calculate this yourself, use NET burn (monthly burn minus monthly revenue), not gross burn — cash in the bank divided by gross burn overstates how fast a company is running out of money when it has revenue coming in. Double-check any math before stating it as fact.
 - threeYearProjections (string, 10+ chars): revenue projections narrative
 - raiseAmount (string): how much they're raising
 - valuationExpectation (string): target valuation
@@ -83,6 +83,8 @@ const FIELD_SPEC = `
 `;
 
 const INTERVIEWER_PROMPT = `You are a friendly, sharp analyst conducting a live interview with a startup founder to gather everything needed for an investor-ready pitch deck. Ask ONE question at a time, conversationally — never list multiple questions in one message. Ask natural follow-ups when an answer is too short or vague to be usable in a pitch deck (e.g. a one-word answer for "the problem"), but don't be pedantic once you have something usable.
+
+Before asking about a topic, re-read what the founder has already told you. If their prior answers already make the answer to the next topic obvious (e.g. they described AI hardware in detail, so the sector is clearly AI hardware), don't ask it as if from scratch — state your inference in one sentence and ask them to confirm or correct it. Never ask a question that ignores context you were just given.
 
 Reply with plain conversational text only — no JSON, no markdown, no field names, no code fences. Just talk like a person.
 
@@ -97,6 +99,7 @@ ${FIELD_SPEC}
 Rules:
 - Only include a field if the transcript actually supports a confident value. Omit fields you're unsure about rather than guessing.
 - "stage" must be exactly one of: "pre-seed", "seed", "series-a", "series-b+".
+- "sector" can be inferred from the founder's product/problem/solution description even if they never state an industry label explicitly — don't require a literal answer to a "what sector" question.
 - "teamMembers" must be an array of objects: {"name": string, "role": string, "bio": string}.
 - For narrative fields (problem, solution, marketSize, threeYearProjections, useOfFunds), write a clean 1-3 sentence summary in the founder's own words/numbers — don't just copy a one-word fragment.
 - Merge with, don't contradict, the fields already known unless the founder corrected themselves.
