@@ -17,6 +17,9 @@ import {
 } from "./types";
 import { PPTX_THEMES, THEME_IDS, type DesignSpec } from "@/lib/pptx/themes";
 import type { Engagement } from "@/lib/types";
+import { getIntakeAnswers } from "@/lib/intake/answers";
+import { renderPromptFromBank } from "@/lib/intake/prompt";
+import { branchPreamble } from "@/lib/intake/branchGuidance";
 
 const MODEL = "anthropic/claude-sonnet-4-5";
 const MAX_TOKENS = 8000;
@@ -25,47 +28,13 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export type OnStageProgress = (stage: DraftStageId) => void | Promise<void>;
 
 function buildIntakePrompt(engagement: Engagement): string {
-  const { intake, clientName, clientEmail } = engagement;
-  if (!intake) throw new DraftGenerationError("No intake data found", "NO_INTAKE", engagement.id);
+  const v2 = getIntakeAnswers(engagement);
+  if (!v2) throw new DraftGenerationError("No intake data found", "NO_INTAKE", engagement.id);
 
-  const team = intake.teamMembers
-    .map((m) => `  - ${m.name} (${m.role}): ${m.bio}`)
-    .join("\n");
-
-  return `CLIENT INFORMATION
-Name: ${clientName}
-Email: ${clientEmail}
-
-COMPANY BASICS
-Company Name: ${intake.companyName}
-One-Liner: ${intake.oneLiner}
-Sector: ${intake.sector}
-Stage: ${intake.stage}
-
-PROBLEM / SOLUTION / MARKET
-Problem: ${intake.problem}
-Solution: ${intake.solution}
-Market Size: ${intake.marketSize}
-
-TRACTION & KEY METRICS
-Key Metrics: ${intake.keyMetrics}
-Growth Rate: ${intake.growthRate}
-Notable Customers / Logos: ${intake.notableCustomers || "Not provided"}
-
-TEAM
-${team}
-
-FINANCIALS
-Current Revenue: ${intake.currentRevenue}
-Monthly Burn Rate: ${intake.burnRate}
-Runway: ${intake.runway}
-3-Year Projections: ${intake.threeYearProjections}
-
-THE RAISE
-Raise Amount: ${intake.raiseAmount}
-Valuation Expectation: ${intake.valuationExpectation}
-Use of Funds: ${intake.useOfFunds}
-Current Investors: ${intake.currentInvestors || "None / not disclosed"}`;
+  return renderPromptFromBank(v2, {
+    clientName: engagement.clientName,
+    clientEmail: engagement.clientEmail,
+  });
 }
 
 async function callOpenRouter(
@@ -205,10 +174,18 @@ export async function generateDraft(
     ? `\n\n## CFO PROPRIETARY METHODOLOGY NOTES\n\n${cfoAddendum}`
     : "";
 
+  // Industry framing goes on every stage that writes prose the customer will
+  // read. The addendum can't carry this: it's one global string, while these
+  // rules are chosen per engagement.
+  const branchSection = branchPreamble(
+    getIntakeAnswers(engagement)?.industry_branch ?? null
+  );
+  const contentSystem = (base: string) => base + branchSection + addendumSection;
+
   // Stage 1 — analyze
   await onProgress?.(DRAFT_STAGES[0].id);
   const brief = await callStageJson<DiligenceBrief>(
-    STAGE_ANALYZE_PROMPT + addendumSection,
+    contentSystem(STAGE_ANALYZE_PROMPT),
     intakePrompt,
     isDiligenceBrief,
     "analyze",
@@ -220,7 +197,7 @@ export async function generateDraft(
   // Stage 2 — deck outline
   await onProgress?.(DRAFT_STAGES[1].id);
   const { deckOutline } = await callStageJson<{ deckOutline: DeckSlide[] }>(
-    STAGE_OUTLINE_PROMPT + addendumSection,
+    contentSystem(STAGE_OUTLINE_PROMPT),
     intakePrompt + briefSection,
     isOutlineResult,
     "outline",
@@ -232,7 +209,7 @@ export async function generateDraft(
   // Stage 3 — investor report
   await onProgress?.(DRAFT_STAGES[2].id);
   const { reportSections } = await callStageJson<{ reportSections: ReportSection[] }>(
-    STAGE_REPORT_PROMPT + addendumSection,
+    contentSystem(STAGE_REPORT_PROMPT),
     intakePrompt + briefSection + outlineSection,
     isReportResult,
     "report",

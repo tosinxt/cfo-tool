@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 import type { DeckSlide, ReportSection, DraftProgress } from "./ai/types";
 import type { DesignSpec } from "./pptx/themes";
+import type { IntakeV2 } from "./intake/types";
 
 export type EngagementStatus =
   | "paid"
@@ -16,6 +17,11 @@ export interface TeamMember {
   bio: string;
 }
 
+/**
+ * Legacy flat intake, superseded by the question bank (`lib/intake/bank.ts`).
+ * Retained only so `migrateLegacyIntake` can read pre-refactor engagements —
+ * nothing writes this shape any more.
+ */
 export interface IntakeFormData {
   // Step 1 – Company basics
   companyName: string;
@@ -48,25 +54,6 @@ export interface IntakeFormData {
   useOfFunds: string;
   currentInvestors: string;
 
-  submittedAt: Timestamp;
-}
-
-/** @deprecated use IntakeFormData */
-export interface IntakeData {
-  companyName: string;
-  industry: string;
-  foundedYear: number;
-  teamSize: number;
-  revenueStage: string;
-  fundingAmount: number;
-  useOfFunds: string;
-  problemStatement: string;
-  solution: string;
-  targetMarket: string;
-  competitiveAdvantage: string;
-  traction: string;
-  financialHighlights: string;
-  founderBackground: string;
   submittedAt: Timestamp;
 }
 
@@ -118,6 +105,7 @@ export interface Engagement {
   paidAt?: Timestamp;
   intakeSubmittedAt?: Timestamp;
   intake?: IntakeFormData;
+  intakeV2?: IntakeV2;
   aiDraft?: AiDraft & { deckOutline?: DeckSlide[]; reportSections?: ReportSection[]; design?: DesignSpec };
   cfoEdits?: CfoEdits;
   files?: EngagementFiles;
@@ -126,6 +114,7 @@ export interface Engagement {
 
 export type EngagementEventType =
   | "engagement_created"
+  | "intake_draft_started"
   | "payment_confirmed"
   | "intake_submitted"
   | "draft_generated"

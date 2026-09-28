@@ -60,11 +60,14 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
   const hasSlides = slides.length > 0;
   const activeSlide = slides[activeIdx];
   const isGenerating = status === "drafting" && !hasSlides;
+  // Held at the CFO-review gate: the draft exists but is deliberately withheld.
+  const isAwaitingReview = !hasSlides && !isGenerating;
+  const isPending = !hasSlides;
 
   // Poll real pipeline progress while the draft is being generated, and
   // auto-refresh the page once a stage transition actually lands.
   useEffect(() => {
-    if (!isGenerating) return;
+    if (!isPending) return;
 
     const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt.current) / 1000)), 1000);
 
@@ -74,7 +77,9 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
         if (!res.ok) return;
         const data = await res.json();
         if (data.draftProgress) setProgress(data.draftProgress);
-        if (data.status !== "drafting" || data.slideCount > 0) {
+        // slideCount is 0 until the CFO approves, so this only fires when
+        // content has actually been released to the customer.
+        if (data.slideCount > 0 || data.status !== status) {
           router.refresh();
         }
       } catch {
@@ -86,7 +91,7 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
       clearInterval(tick);
       clearInterval(poll);
     };
-  }, [isGenerating, engagementId, token, router]);
+  }, [isPending, status, engagementId, token, router]);
 
   function goTo(i: number) {
     setDirection(i > activeIdx ? 1 : -1);
@@ -167,7 +172,9 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
           <p className="text-[13px]" style={{ color: "var(--color-steel)" }}>
             {hasSlides
               ? `${slides.length} slides · Investor pitch deck`
-              : "Your deck is being generated — check back shortly."}
+              : isAwaitingReview
+                ? "Your CFO is reviewing the draft — we'll email you when it's ready."
+                : "Your deck is being generated — check back shortly."}
           </p>
         </div>
 
@@ -186,9 +193,19 @@ export default function DeckViewer({ engagementId, token, companyName, slides, h
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <p className="mb-1 text-[16px] font-[500]" style={{ color: "var(--color-ink)" }}>AI is drafting your deck</p>
+            <p className="mb-1 text-[16px] font-[500]" style={{ color: "var(--color-ink)" }}>
+              {isAwaitingReview ? "With your CFO for review" : "AI is drafting your deck"}
+            </p>
 
-            {(() => {
+            {isAwaitingReview && (
+              <p className="mx-auto mb-2 mt-3 max-w-[420px] text-[13px] leading-[1.6]" style={{ color: "var(--color-steel)" }}>
+                Every deck is reviewed by our CFO before it reaches you — that review
+                is what makes it investor-ready. You&apos;ll get an email the moment
+                it&apos;s released.
+              </p>
+            )}
+
+            {!isAwaitingReview && (() => {
               const currentIdx = Math.max(progress?.stageIndex ?? 0, 0);
               const total = DRAFT_STAGES.length;
               return (

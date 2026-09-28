@@ -2,6 +2,9 @@
  * Demo mode — set DEMO_MODE=true in .env.local to bypass Stripe, auth,
  * token validation, emails, and AI generation. For UI development only.
  */
+import { migrateLegacyIntake } from "./intake/answers";
+import type { IntakeFormData } from "./types";
+
 export const DEMO_MODE = process.env.DEMO_MODE === "true";
 export const DEMO_MODE_PUBLIC = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -10,7 +13,7 @@ export const DEMO_TOKEN = "demo-token-insecure";
 
 export const DEMO_ACTOR = { uid: "demo-admin-uid", email: "demo@admin.local" };
 
-export const DEMO_ENGAGEMENT = {
+const DEMO_ENGAGEMENT_BASE = {
   id: DEMO_ENGAGEMENT_ID,
   clientEmail: "founder@acme.io",
   clientName: "Sarah Chen",
@@ -75,4 +78,14 @@ export const DEMO_ENGAGEMENT = {
     reportPath: "",
   },
   events: [],
+};
+
+// The demo doc predates the question bank. Deriving its v2 answers through the
+// same adapter real legacy engagements use means the demo also exercises that
+// path, instead of drifting as a hand-maintained second copy.
+export const DEMO_ENGAGEMENT = {
+  ...DEMO_ENGAGEMENT_BASE,
+  intakeV2: migrateLegacyIntake(
+    DEMO_ENGAGEMENT_BASE.intake as unknown as IntakeFormData
+  ),
 };

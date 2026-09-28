@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import type { Engagement } from "@/lib/types";
 import type { DeckSlide } from "@/lib/ai/types";
+import { canCustomerSeeDeck } from "@/lib/intake/gate";
+import { intakeTokenMatches } from "@/lib/intake/authorizeIntakeToken";
 
 export const runtime = "nodejs";
 
@@ -23,8 +25,19 @@ export async function GET(
 
   const engagement = { id: engagementId, ...docSnap.data() } as Engagement;
 
-  if (engagement.intakeToken !== token) {
+  if (!intakeTokenMatches(engagement.intakeToken, token)) {
     return NextResponse.json({ error: "Invalid token" }, { status: 403 });
+  }
+
+  // Pre-approval the client gets progress only. Leaking slideCount would
+  // reveal that an unreviewed draft exists and let the viewer offer content.
+  if (!canCustomerSeeDeck(engagement.status)) {
+    return NextResponse.json({
+      status: engagement.status,
+      draftProgress: engagement.draftProgress ?? null,
+      slideCount: 0,
+      hasDeckFile: false,
+    });
   }
 
   const slides: DeckSlide[] =

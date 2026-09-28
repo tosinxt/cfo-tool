@@ -16,6 +16,7 @@ interface AuditEvent {
 
 const TYPE_LABELS: Partial<Record<EngagementEventType, string>> = {
   engagement_created: "Created",
+  intake_draft_started: "Intake started",
   payment_confirmed: "Payment confirmed",
   intake_submitted: "Intake submitted",
   draft_generated: "Draft generated",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
@@ -9,7 +9,16 @@ import { StatusDot } from "@/components/admin/StatusDot";
 import { AuditLog } from "@/components/admin/AuditLog";
 import { DraftLegsFull } from "@/components/admin/DraftLegs";
 import { DesignPicker } from "@/components/admin/DesignPicker";
-import type { Engagement, IntakeFormData } from "@/lib/types";
+import type { Engagement, TeamMember } from "@/lib/types";
+import { QUESTION_BANK } from "@/lib/intake/bank";
+import { getIntakeAnswers } from "@/lib/intake/answers";
+import { questionsForBranch, sectionsForBranch } from "@/lib/intake/schema";
+import {
+  SECTION_LABELS,
+  type Branch,
+  type Confidence,
+  type QuestionDef,
+} from "@/lib/intake/types";
 import type { DeckSlide, ReportSection } from "@/lib/ai/types";
 import type { DesignSpec } from "@/lib/pptx/themes";
 
@@ -189,20 +198,40 @@ function IntakeTab({
   engagement: Engagement;
   actorEmail: string;
 }) {
-  const initial = engagement.intake;
-  const [form, setForm] = useState<Partial<IntakeFormData>>(initial ?? {});
-  const [teamMembers, setTeamMembers] = useState(
-    initial?.teamMembers ?? [{ name: "", role: "", bio: "" }]
+  void actorEmail;
+
+  // Reads through the adapter, so pre-question-bank engagements still edit.
+  const initial = useMemo(() => getIntakeAnswers(engagement), [engagement]);
+  const branch: Branch = initial?.industry_branch ?? "technology";
+  const questions = useMemo(
+    () =>
+      questionsForBranch(branch)
+        .filter((q: QuestionDef) => q.section !== "gate")
+        .sort((a: QuestionDef, b: QuestionDef) => a.order - b.order),
+    [branch]
   );
+
+  const [values, setValues] = useState<Record<string, unknown>>(() => {
+    const out: Record<string, unknown> = {};
+    for (const q of QUESTION_BANK) out[q.id] = q.widget === "teamRepeater" ? [] : "";
+    for (const [id, rec] of Object.entries(initial?.answers ?? {})) out[id] = rec.value;
+    return out;
+  });
+  const [confidence, setConfidence] = useState<Record<string, Confidence>>(() => {
+    const out: Record<string, Confidence> = {};
+    for (const [id, rec] of Object.entries(initial?.answers ?? {})) out[id] = rec.confidence;
+    return out;
+  });
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rerunning, setRerunning] = useState(false);
 
-  void actorEmail;
+  const team = (values.team_members as TeamMember[] | undefined) ?? [];
 
-  function set(field: keyof IntakeFormData, value: string) {
-    setForm((f) => ({ ...f, [field]: value }));
+  function set(id: string, value: unknown) {
+    setValues((v) => ({ ...v, [id]: value }));
   }
 
   async function handleSave() {
@@ -210,17 +239,20 @@ function IntakeTab({
     setSaved(false);
     setError(null);
 
-    const orig = (initial ?? {}) as unknown as Record<string, unknown>;
-    const curr = form as unknown as Record<string, unknown>;
-    const originalFields = Object.keys(orig);
-    const fieldsChanged = originalFields.filter(
-      (k) => JSON.stringify(orig[k]) !== JSON.stringify(curr[k])
+    const original = initial?.answers ?? {};
+    const fieldsChanged = Object.keys(values).filter(
+      (k) => JSON.stringify(original[k]?.value) !== JSON.stringify(values[k])
     );
 
-    const result = await apiPost(
-      `/api/admin/engagement/${engagement.id}/intake`,
-      { intake: { ...form, teamMembers }, fieldsChanged }
-    );
+    const answers: Record<string, unknown> = {};
+    for (const q of questions) answers[q.id] = values[q.id];
+
+    const result = await apiPost(`/api/admin/engagement/${engagement.id}/intake`, {
+      answers,
+      confidence,
+      fieldsChanged,
+      industry_branch: branch,
+    });
 
     setSaving(false);
     if (result.ok) {
@@ -241,113 +273,123 @@ function IntakeTab({
     setRerunning(false);
   }
 
-  const textField = (
-    label: string,
-    field: keyof IntakeFormData,
-    placeholder?: string,
-    multiline?: boolean
-  ) => (
-    <div className="space-y-1.5" key={field}>
-      <label className="block text-[12px] font-medium text-gray-600">{label}</label>
-      {multiline ? (
-        <textarea
-          rows={3}
-          value={(form[field] as string) ?? ""}
-          onChange={(e) => set(field, e.target.value)}
-          placeholder={placeholder}
-          className={textareaCls}
-        />
-      ) : (
-        <input
-          value={(form[field] as string) ?? ""}
-          onChange={(e) => set(field, e.target.value)}
-          placeholder={placeholder}
-          className={inputCls}
-        />
-      )}
-    </div>
-  );
+  const sections = sectionsForBranch(branch);
 
   return (
-    <div className={`${cardCls} space-y-5`}>
-      <SectionLabel>Intake data</SectionLabel>
-
-      <div className="grid grid-cols-2 gap-4">
-        {textField("Company name", "companyName", "Acme Inc.")}
-        {textField("Stage", "stage", "Series A")}
-        {textField("One-liner", "oneLiner", "We help X do Y")}
-        {textField("Sector", "sector", "FinTech")}
+    <div className={`${cardCls} space-y-6`}>
+      <div className="flex items-center justify-between">
+        <SectionLabel>Intake data</SectionLabel>
+        <span className="text-[11px] font-mono uppercase tracking-wide text-gray-400">
+          {branch} branch
+        </span>
       </div>
 
-      {textField("Problem", "problem", "What pain do you solve?", true)}
-      {textField("Solution", "solution", "How do you solve it?", true)}
-      {textField("Market size (TAM/SAM/SOM)", "marketSize")}
-      {textField("Key metrics", "keyMetrics", "500 customers, $1.2M ARR", true)}
-      {textField("Growth rate", "growthRate")}
-      {textField("Notable customers", "notableCustomers")}
+      {sections.map((sectionId) => {
+        const inSection = questions.filter((q: QuestionDef) => q.section === sectionId);
+        if (!inSection.length) return null;
+        return (
+          <div key={sectionId} className="space-y-3">
+            <p className="text-[12px] font-semibold text-gray-700">
+              {SECTION_LABELS[sectionId]}
+            </p>
 
-      <div className="space-y-3">
-        <p className="text-[12px] font-medium text-gray-600">Team members</p>
-        {teamMembers.map((m, i) => (
-          <div key={i} className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2.5">
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] font-mono font-medium text-gray-400">
-                MEMBER {i + 1}
-              </span>
-              {teamMembers.length > 1 && (
+            {inSection.map((q: QuestionDef) => {
+              if (q.widget === "teamRepeater") return null;
+              const multiline =
+                q.widget === "textarea" ||
+                q.widget === "charTextarea" ||
+                q.widget === "allocation";
+              const conf = confidence[q.id] ?? "confirmed";
+              return (
+                <div key={q.id} className="space-y-1.5" style={q.parentId ? { marginLeft: 14, borderLeft: "2px solid #eee", paddingLeft: 12 } : undefined}>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-[12px] font-medium text-gray-600">
+                      {q.label}
+                      {q.required && <span className="text-gray-400"> *</span>}
+                    </label>
+                    {/* Brent needs to see, and be able to correct, how sure the
+                        founder was — an estimate must never read as verified. */}
+                    <select
+                      value={conf}
+                      onChange={(e) =>
+                        setConfidence((c) => ({ ...c, [q.id]: e.target.value as Confidence }))
+                      }
+                      className="h-6 rounded border border-gray-200 bg-white px-1.5 text-[11px] text-gray-600"
+                    >
+                      <option value="confirmed">Confirmed</option>
+                      <option value="estimate">Estimate</option>
+                      <option value="unknown">Don&apos;t know</option>
+                    </select>
+                  </div>
+                  {multiline ? (
+                    <textarea
+                      rows={3}
+                      value={(values[q.id] as string) ?? ""}
+                      onChange={(e) => set(q.id, e.target.value)}
+                      placeholder={q.placeholder}
+                      className={textareaCls}
+                    />
+                  ) : (
+                    <input
+                      value={(values[q.id] as string) ?? ""}
+                      onChange={(e) => set(q.id, e.target.value)}
+                      placeholder={q.placeholder}
+                      className={inputCls}
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            {sectionId === "team" && (
+              <div className="space-y-3">
+                <p className="text-[12px] font-medium text-gray-600">Team members</p>
+                {team.map((m, i) => (
+                  <div key={i} className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] font-mono font-medium text-gray-400">
+                        MEMBER {i + 1}
+                      </span>
+                      <button
+                        onClick={() => set("team_members", team.filter((_, idx) => idx !== i))}
+                        className="text-[11px] text-[oklch(50%_0.15_25)] hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {(["name", "role"] as const).map((k) => (
+                      <input
+                        key={k}
+                        value={m[k]}
+                        onChange={(e) =>
+                          set("team_members", team.map((x, idx) => (idx === i ? { ...x, [k]: e.target.value } : x)))
+                        }
+                        placeholder={k[0].toUpperCase() + k.slice(1)}
+                        className={inputCls}
+                      />
+                    ))}
+                    <textarea
+                      rows={2}
+                      value={m.bio}
+                      onChange={(e) =>
+                        set("team_members", team.map((x, idx) => (idx === i ? { ...x, bio: e.target.value } : x)))
+                      }
+                      placeholder="Bio"
+                      className={textareaCls}
+                    />
+                  </div>
+                ))}
                 <button
-                  onClick={() => setTeamMembers((t) => t.filter((_, idx) => idx !== i))}
-                  className="text-[11px] text-[oklch(50%_0.15_25)] hover:underline"
+                  onClick={() => set("team_members", [...team, { name: "", role: "", bio: "" }])}
+                  className="w-full py-2 rounded-md border border-dashed border-gray-200 text-[12px] text-gray-400 hover:border-hudson-blue/40 hover:text-hudson-blue transition-colors"
                 >
-                  Remove
+                  + Add member
                 </button>
-              )}
-            </div>
-            <input
-              value={m.name}
-              onChange={(e) =>
-                setTeamMembers((t) => t.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))
-              }
-              placeholder="Name"
-              className={inputCls}
-            />
-            <input
-              value={m.role}
-              onChange={(e) =>
-                setTeamMembers((t) => t.map((x, idx) => (idx === i ? { ...x, role: e.target.value } : x)))
-              }
-              placeholder="Role"
-              className={inputCls}
-            />
-            <textarea
-              rows={2}
-              value={m.bio}
-              onChange={(e) =>
-                setTeamMembers((t) => t.map((x, idx) => (idx === i ? { ...x, bio: e.target.value } : x)))
-              }
-              placeholder="Bio"
-              className={textareaCls}
-            />
+              </div>
+            )}
           </div>
-        ))}
-        <button
-          onClick={() => setTeamMembers((t) => [...t, { name: "", role: "", bio: "" }])}
-          className="w-full py-2 rounded-md border border-dashed border-gray-200 text-[12px] text-gray-400 hover:border-hudson-blue/40 hover:text-hudson-blue transition-colors"
-        >
-          + Add member
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {textField("Current ARR / revenue", "currentRevenue")}
-        {textField("Monthly burn rate", "burnRate")}
-        {textField("Runway", "runway")}
-        {textField("3-year projections", "threeYearProjections", "", true)}
-        {textField("Raise amount", "raiseAmount")}
-        {textField("Valuation expectation", "valuationExpectation")}
-        {textField("Use of funds", "useOfFunds", "", true)}
-        {textField("Current investors", "currentInvestors")}
-      </div>
+        );
+      })}
 
       <SaveBar
         saving={saving}

@@ -11,6 +11,13 @@ export const runtime = "nodejs";
 
 const ALLOWED_TRANSITIONS: EngagementStatus[] = ["approved", "delivered"];
 
+// A deck may only be delivered after it has been approved — otherwise an
+// unreviewed draft could be released to the customer in a single step.
+const REQUIRED_FROM: Partial<Record<EngagementStatus, EngagementStatus[]>> = {
+  approved: ["ready_for_review", "approved"],
+  delivered: ["approved", "delivered"],
+};
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -42,6 +49,15 @@ export async function POST(
   const docSnap = await docRef.get();
   if (!docSnap.exists) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const currentStatus = docSnap.data()!.status as EngagementStatus;
+  const allowedFrom = REQUIRED_FROM[status];
+  if (allowedFrom && !allowedFrom.includes(currentStatus)) {
+    return NextResponse.json(
+      { error: `Cannot move from ${currentStatus} to ${status}. Requires: ${allowedFrom.join(" or ")}.` },
+      { status: 409 }
+    );
   }
 
   await docRef.update({

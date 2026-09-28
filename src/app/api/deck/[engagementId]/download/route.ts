@@ -4,6 +4,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { buildDeck } from "@/lib/pptx/buildDeck";
 import type { Engagement } from "@/lib/types";
 import type { AIDraft } from "@/lib/ai/types";
+import { canCustomerSeeDeck } from "@/lib/intake/gate";
+import { intakeTokenMatches } from "@/lib/intake/authorizeIntakeToken";
 
 export const runtime = "nodejs";
 
@@ -27,8 +29,17 @@ export async function GET(
     aiDraft?: AIDraft;
   };
 
-  if (engagement.intakeToken !== token) {
+  if (!intakeTokenMatches(engagement.intakeToken, token)) {
     return NextResponse.json({ error: "Invalid token" }, { status: 403 });
+  }
+
+  // Every deck goes to the CFO before the customer sees it — an approved
+  // status is the gate, not merely the existence of an AI draft.
+  if (!canCustomerSeeDeck(engagement.status)) {
+    return NextResponse.json(
+      { error: "Your deck is still under CFO review." },
+      { status: 403 }
+    );
   }
 
   if (!engagement.aiDraft) {

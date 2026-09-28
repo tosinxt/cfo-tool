@@ -110,9 +110,11 @@ function getIp(req: NextRequest): string {
 
 export async function checkRateLimit(
   req: NextRequest,
-  options?: { window?: number; max?: number; key?: string }
+  options?: { window?: number; max?: number; key?: string; identifier?: string }
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
-  const ip = getIp(req);
+  // Token-scoped routes pass an identifier (the engagement id) so callers
+  // behind a shared NAT don't consume each other's budget.
+  const ip = options?.identifier ?? getIp(req);
   const routeKey = options?.key ?? "default";
   const max = options?.max ?? DEFAULT_MAX_REQUESTS;
   const windowMs = options?.window ?? DEFAULT_WINDOW_MS;

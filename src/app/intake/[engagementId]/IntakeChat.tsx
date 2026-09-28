@@ -8,6 +8,12 @@ import Cloudscape from "@/components/forgeui/cloudscape";
 interface Props {
   engagementId: string;
   token: string;
+  /**
+   * Answers already saved server-side (from the written form, or an earlier
+   * session on another device). Folded into `collected` so the interviewer
+   * doesn't re-ask what the founder has already answered.
+   */
+  serverAnswers?: Record<string, unknown>;
 }
 
 interface ChatMessage {
@@ -21,36 +27,11 @@ interface Progress {
 }
 
 const STORAGE_KEY = (id: string) => `intake_chat_${id}`;
-// The written form autosaves its draft under this key (see IntakeForm.tsx) —
-// folding it into `collected` lets a founder switch from the form to the chat
-// without the AI re-asking what they already answered.
-const FORM_DRAFT_KEY = (id: string) => `intake_draft_${id}`;
 
 const OPENER = "Hi! I'm going to ask you a few questions to put together your pitch deck — should only take a few minutes. Let's start: what's your company called, and what's the one-liner pitch?";
 
 const RESUME_OPENER = "Hi! I can see you already answered some of this on the written form — I've carried those answers over, so I'll only ask about what's missing. Ready to pick up where you left off?";
 
-function readFormDraft(engagementId: string): Record<string, unknown> {
-  try {
-    const saved = localStorage.getItem(FORM_DRAFT_KEY(engagementId));
-    if (!saved) return {};
-    const draft = JSON.parse(saved) as Record<string, unknown>;
-    if (!draft || typeof draft !== "object" || Array.isArray(draft)) return {};
-    const out: Record<string, unknown> = {};
-    for (const [key, v] of Object.entries(draft)) {
-      if (typeof v === "string" && v.trim()) out[key] = v;
-      else if (key === "teamMembers" && Array.isArray(v)) {
-        const members = v.filter(
-          (m) => m && typeof m === "object" && Object.values(m).some((x) => typeof x === "string" && x.trim())
-        );
-        if (members.length) out.teamMembers = members;
-      }
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
 
 // Statuses where the engagement itself is invalid/finished — no amount of
 // retrying will fix it, so we end the conversation instead of leaving the
@@ -75,7 +56,7 @@ async function fetchJson(url: string, body: unknown): Promise<{ status: number; 
   }
 }
 
-export default function IntakeChat({ engagementId, token }: Props) {
+export default function IntakeChat({ engagementId, token, serverAnswers }: Props) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window === "undefined") return [{ role: "assistant", content: OPENER }];
@@ -86,7 +67,7 @@ export default function IntakeChat({ engagementId, token }: Props) {
         if (parsed.messages?.length) return parsed.messages;
       }
     } catch { /* ignore */ }
-    const hasFormDraft = Object.keys(readFormDraft(engagementId)).length > 0;
+    const hasFormDraft = Object.keys(serverAnswers ?? {}).length > 0;
     return [{ role: "assistant", content: hasFormDraft ? RESUME_OPENER : OPENER }];
   });
   // Chat's own extraction wins over the form draft: it is the fresher signal
@@ -98,7 +79,7 @@ export default function IntakeChat({ engagementId, token }: Props) {
       const saved = localStorage.getItem(STORAGE_KEY(engagementId));
       if (saved) chat = (JSON.parse(saved) as { collected: Record<string, unknown> }).collected ?? {};
     } catch { /* ignore */ }
-    return { ...readFormDraft(engagementId), ...chat };
+    return { ...(serverAnswers ?? {}), ...chat };
   });
   const [progress, setProgress] = useState<Progress | null>(() => {
     if (typeof window === "undefined") return null;
@@ -197,10 +178,20 @@ export default function IntakeChat({ engagementId, token }: Props) {
     setSubmitting(true);
     setError(null);
     try {
+      // The chat cannot reliably judge how sure a founder is, so every answer
+      // it gathered is submitted as an estimate. The founder confirms or
+      // downgrades each one on the confirmation step.
+      const confidence: Record<string, "estimate"> = {};
+      for (const id of Object.keys(finalData)) confidence[id] = "estimate";
+
+      const branch = finalData.industry_branch;
       const { status, data } = await fetchJson("/api/intake/submit", {
         engagementId,
         token,
-        ...finalData,
+        business_type: "b2b",
+        industry_branch: branch,
+        answers: finalData,
+        confidence,
       });
 
       if (status < 200 || status >= 300) {

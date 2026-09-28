@@ -12,6 +12,9 @@
 :root {
   /* GIC Design System */
   --color-hudson-blue: #0081c0;
+  /* Accessible variant of hudson-blue. The base tone is only 4.28:1 against
+     white and 4.09:1 against linen, so text and solid CTAs use this instead. */
+  --color-hudson-deep: #0075ad;
   --color-slate-cyan: #41a1cf;
   --color-graphite-night: #282834;
   --color-ink: #171717;

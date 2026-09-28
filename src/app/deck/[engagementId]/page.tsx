@@ -3,6 +3,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { DEMO_MODE, DEMO_ENGAGEMENT_ID, DEMO_TOKEN } from "@/lib/demo";
 import type { Engagement } from "@/lib/types";
 import type { DeckSlide } from "@/lib/ai/types";
+import { canCustomerSeeDeck, hasCustomerDeckPage } from "@/lib/intake/gate";
+import { intakeTokenMatches } from "@/lib/intake/authorizeIntakeToken";
 import DeckViewer from "./DeckViewer";
 import Cloudscape from "@/components/forgeui/cloudscape";
 
@@ -67,21 +69,25 @@ export default async function DeckPage({ params, searchParams }: Props) {
 
   const engagement = { id: engagementId, ...docSnap.data() } as Engagement;
 
-  if (engagement.intakeToken !== token) return <GateError message="This access token is invalid." />;
+  if (!intakeTokenMatches(engagement.intakeToken, token)) return <GateError message="This access token is invalid." />;
 
-  const VIEWABLE_STATUSES = ["drafting", "ready_for_review", "approved", "delivered"];
-  if (!VIEWABLE_STATUSES.includes(engagement.status)) {
+  if (!hasCustomerDeckPage(engagement.status)) {
     return <GateError message="Your deck isn't ready yet. Please complete your intake form first." />;
   }
 
-  const slides: DeckSlide[] =
-    (engagement.cfoEdits?.deckOutline as DeckSlide[] | undefined) ??
-    (engagement.aiDraft?.deckOutline as DeckSlide[] | undefined) ??
-    [];
+  // Nothing unreviewed leaves the server. Slides are only materialised once
+  // Brent has approved, so a pre-approval payload carries no deck content.
+  const approved = canCustomerSeeDeck(engagement.status);
+
+  const slides: DeckSlide[] = approved
+    ? ((engagement.cfoEdits?.deckOutline as DeckSlide[] | undefined) ??
+        (engagement.aiDraft?.deckOutline as DeckSlide[] | undefined) ??
+        [])
+    : [];
 
   // No Storage dependency — the pptx is built on demand at download time, so
   // the download button just needs a finished AI draft to exist.
-  const hasDeckFile = !!engagement.aiDraft;
+  const hasDeckFile = approved && !!engagement.aiDraft;
 
   return (
     <DeckViewer
