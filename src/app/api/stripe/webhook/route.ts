@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { stripe } from "@/lib/stripe";
 import { adminDb } from "@/lib/firebase/admin";
+import { sendIntakeLink } from "@/lib/email";
 import { randomBytes } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
@@ -46,6 +47,12 @@ export async function POST(req: NextRequest) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    if (clientEmail) {
+      sendIntakeLink(clientEmail, docRef.id, intakeToken).catch((err) => {
+        Sentry.captureException(err, { tags: { route: "stripe-webhook" } });
+      });
+    }
   }
 
   return NextResponse.json({ received: true });

@@ -27,6 +27,27 @@ export async function sendClientConfirmation(
   });
 }
 
+export async function sendIntakeLink(
+  to: string,
+  engagementId: string,
+  intakeToken: string
+): Promise<void> {
+  const FROM = process.env.RESEND_FROM_ADDRESS!;
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL!;
+  const intakeUrl = `${APP_URL}/intake/${engagementId}?token=${encodeURIComponent(intakeToken)}`;
+  await getResend().emails.send({
+    from: FROM,
+    to,
+    subject: "Start your Series A pitch deck intake",
+    html: `
+      <p>Thanks for your order! Use the link below to fill out your intake form.</p>
+      <p><a href="${intakeUrl}">Start your intake →</a></p>
+      <p>Your progress is saved automatically, so if you need to stop partway through, keep this email — it's the only way back to your form.</p>
+      <p>Questions? Reply to this email and we'll get back to you within one business day.</p>
+    `,
+  });
+}
+
 export async function sendDeckReady(
   to: string,
   engagementId: string,
