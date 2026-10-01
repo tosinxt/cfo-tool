@@ -96,8 +96,10 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
   const [error, setError] = useState<string | null>(null);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [lastFailedText, setLastFailedText] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -218,6 +220,59 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
       );
       setDone(false);
       setSubmitting(false);
+    }
+  }
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("engagementId", engagementId);
+      body.append("token", token);
+      body.append("file", file);
+      const branch = collected.industry_branch;
+      if (typeof branch === "string") body.append("branch", branch);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/intake/upload", { method: "POST", body, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        fields?: Record<string, unknown>;
+      };
+
+      if (!res.ok) {
+        if (TERMINAL_STATUSES.has(res.status)) {
+          setFatalError(data.error ?? "Something went wrong");
+          return;
+        }
+        setError(data.error ?? "We couldn't process that file.");
+        return;
+      }
+
+      // Answers the founder already gave in chat win over the document's.
+      const fresh = Object.entries(data.fields ?? {}).filter(([id]) => !(id in collected));
+      setCollected((c) => ({ ...Object.fromEntries(fresh), ...c }));
+      const note =
+        fresh.length > 0
+          ? `I read ${file.name} and pulled ${fresh.length} answer${fresh.length === 1 ? "" : "s"} from it, so I'll only ask about what's still missing. Correct me if anything I picked up looks off.`
+          : `I read ${file.name}, but didn't find anything new to add. Let's keep going.`;
+      setMessages((m) => [...m, { role: "assistant", content: note }]);
+    } catch (err) {
+      setError(
+        err instanceof Error && err.name === "AbortError"
+          ? "That took too long. Please try a smaller file."
+          : "Upload failed. Please try again."
+      );
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -366,6 +421,32 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
           className="flex items-end gap-2 border-t px-4 py-3"
           style={{ borderColor: "rgba(0,0,0,0.08)" }}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.pptx,.csv,.md,.markdown"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleFile(f);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || sending || done || submitting || !!fatalError}
+            title="Upload a pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown — up to 4 MB) and we'll pre-fill what we can"
+            aria-label="Upload a document"
+            style={{
+              flexShrink: 0, height: "40px", padding: "0 12px", borderRadius: "10px",
+              background: "transparent", color: "var(--color-ink)", border: "1px solid #b8bdb8",
+              fontFamily: "var(--font-af)", fontSize: "13px",
+              cursor: uploading || sending || done || submitting || !!fatalError ? "not-allowed" : "pointer",
+              opacity: uploading || sending || done || submitting || !!fatalError ? 0.5 : 1,
+            }}
+          >
+            {uploading ? "Reading…" : "Upload"}
+          </button>
           <textarea
             ref={inputRef}
             value={input}

@@ -89,6 +89,9 @@ export default function IntakeWizard({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [waitlistEmail, setWaitlistEmail] = useState(initialEmail ?? "");
   const [waitlistDone, setWaitlistDone] = useState(false);
@@ -292,6 +295,72 @@ export default function IntakeWizard({
     } catch (err) {
       setSubmitError((err as Error).message);
       setSubmitting(false);
+    }
+  }
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setUploadNote(null);
+    try {
+      const body = new FormData();
+      body.append("engagementId", engagementId);
+      body.append("token", token);
+      body.append("file", file);
+      if (branch) body.append("branch", branch);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/intake/upload", { method: "POST", body, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        fields?: Record<string, AnswerValue>;
+      };
+      if (!res.ok) {
+        setUploadNote({ text: data.error ?? "We couldn't process that file.", isError: true });
+        return;
+      }
+
+      // Only fill blanks: anything the founder already typed wins. The server
+      // has already saved these as estimates, so they are taken back out of the
+      // autosave queue — a re-save here would overwrite that flag.
+      const current = form.getValues();
+      const filled: string[] = [];
+      for (const [id, value] of Object.entries(data.fields ?? {})) {
+        const v = current[id];
+        if (v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)) continue;
+        form.setValue(id, value);
+        filled.push(id);
+      }
+      for (const id of filled) dirty.current.delete(id);
+      if (filled.length > 0) {
+        setConfidence((prev) => ({
+          ...prev,
+          ...Object.fromEntries(filled.map((id) => [id, "estimate" as const])),
+        }));
+      }
+      setUploadNote({
+        text:
+          filled.length > 0
+            ? `Pulled ${filled.length} answer${filled.length === 1 ? "" : "s"} from ${file.name}. They're marked as estimates. Please review them as you go.`
+            : `Read ${file.name}, but found nothing new to fill in.`,
+        isError: false,
+      });
+    } catch (err) {
+      setUploadNote({
+        text:
+          err instanceof Error && err.name === "AbortError"
+            ? "That took too long. Please try a smaller file."
+            : "Upload failed. Please try again.",
+        isError: true,
+      });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -599,6 +668,38 @@ export default function IntakeWizard({
       </Eyebrow>
       <Display>{SECTION_LABELS[section]}</Display>
       <Lede>{HELPER_BOILERPLATE}</Lede>
+
+      <div
+        className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[10px] px-4 py-3"
+        style={{ background: "var(--color-paper)", border: "1px dashed var(--color-mist)" }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.pptx,.csv,.md,.markdown"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+          }}
+        />
+        <GhostButton onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+          {uploading ? "Reading your document…" : "Upload a document"}
+        </GhostButton>
+        <span className="text-[12px]" style={{ color: "var(--color-steel)" }}>
+          Pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown, up to 4 MB). We&apos;ll
+          pre-fill what we can.
+        </span>
+        {uploadNote && (
+          <p
+            className="w-full text-[13px]"
+            role={uploadNote.isError ? "alert" : "status"}
+            style={{ color: uploadNote.isError ? "#b91c1c" : "var(--color-iron)" }}
+          >
+            {uploadNote.text}
+          </p>
+        )}
+      </div>
 
       {/* Deliberately NOT wrapped in AnimatePresence. A `mode="wait"` exit can
           wedge when the section changes twice in quick succession (e.g. jumping

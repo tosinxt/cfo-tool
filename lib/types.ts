@@ -115,6 +115,7 @@ export interface Engagement {
 export type EngagementEventType =
   | "engagement_created"
   | "intake_draft_started"
+  | "intake_document_uploaded"
   | "payment_confirmed"
   | "intake_submitted"
   | "draft_generated"

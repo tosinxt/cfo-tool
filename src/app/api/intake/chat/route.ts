@@ -7,6 +7,7 @@ import { z } from "zod";
 import { intakeTokenMatches } from "@/lib/intake/authorizeIntakeToken";
 import { completionGateSchema } from "@/lib/intake/schema";
 import { buildInterviewerPrompt, buildExtractorPrompt } from "@/lib/intake/chatSpec";
+import { callModel, extractJsonObject, type Role } from "@/lib/intake/llm";
 import type { Branch } from "@/lib/intake/types";
 
 /** The branch the founder has declared so far, if any. */
@@ -16,9 +17,6 @@ function branchOf(collected: Record<string, unknown>): Branch | null {
 }
 
 export const runtime = "nodejs";
-
-const MODEL = "anthropic/claude-sonnet-4-5";
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -31,47 +29,6 @@ const bodySchema = z.object({
   history: z.array(messageSchema).max(60),
   collected: z.record(z.string(), z.unknown()).default({}),
 });
-
-type Role = "system" | "user" | "assistant";
-
-async function callModel(
-  messages: { role: Role; content: string }[],
-  opts?: { json?: boolean }
-): Promise<string> {
-  const res = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "https://pitchready.co",
-      "X-Title": "Series A HUB",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1200,
-      messages,
-      ...(opts?.json ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`OpenRouter error ${res.status}: ${text}`);
-  }
-
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== "string" || !text) throw new Error("No text content in OpenRouter response");
-  return text;
-}
-
-function extractJsonObject(raw: string): string {
-  const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  const start = stripped.indexOf("{");
-  const end = stripped.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return stripped;
-  return stripped.slice(start, end + 1);
-}
 
 function missingFields(collected: Record<string, unknown>, branch: Branch | null): string[] {
   const result = completionGateSchema({ branch }).safeParse(collected);
