@@ -26,6 +26,9 @@ import {
 } from "@/lib/intake/types";
 import QuestionRenderer from "./QuestionRenderer";
 import { Field, StyledInput, type AnyForm } from "./widgets";
+import { LoaderCircle, Mic, Paperclip } from "lucide-react";
+import { useVoiceRecorder } from "../useVoiceRecorder";
+import { RecordingBar } from "../VoiceControls";
 
 type AnyValue = AnswerValue | undefined;
 type Values = Record<string, AnyValue>;
@@ -89,8 +92,10 @@ export default function IntakeWizard({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean } | null>(null);
+  const [uploading, setUploading] = useState<"document" | "voice" | null>(null);
+  const [uploadNote, setUploadNote] = useState<{ text: string; isError: boolean; transcript?: string } | null>(
+    null
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [waitlistEmail, setWaitlistEmail] = useState(initialEmail ?? "");
@@ -298,8 +303,9 @@ export default function IntakeWizard({
     }
   }
 
-  async function handleFile(file: File) {
-    setUploading(true);
+  async function handleFile(file: File, fromRecorder = false) {
+    const label = fromRecorder ? "your voice note" : file.name;
+    setUploading(fromRecorder ? "voice" : "document");
     setUploadNote(null);
     try {
       const body = new FormData();
@@ -319,6 +325,7 @@ export default function IntakeWizard({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         fields?: Record<string, AnswerValue>;
+        transcript?: string;
       };
       if (!res.ok) {
         setUploadNote({ text: data.error ?? "We couldn't process that file.", isError: true });
@@ -346,9 +353,10 @@ export default function IntakeWizard({
       setUploadNote({
         text:
           filled.length > 0
-            ? `Pulled ${filled.length} answer${filled.length === 1 ? "" : "s"} from ${file.name}. They're marked as estimates. Please review them as you go.`
-            : `Read ${file.name}, but found nothing new to fill in.`,
+            ? `Pulled ${filled.length} answer${filled.length === 1 ? "" : "s"} from ${label}. They're marked as estimates. Please review them as you go.`
+            : `Read ${label}, but found nothing new to fill in.`,
         isError: false,
+        transcript: data.transcript,
       });
     } catch (err) {
       setUploadNote({
@@ -359,10 +367,15 @@ export default function IntakeWizard({
         isError: true,
       });
     } finally {
-      setUploading(false);
+      setUploading(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
+
+  const recorder = useVoiceRecorder(
+    (file) => void handleFile(file, true),
+    (text) => setUploadNote({ text, isError: true })
+  );
 
   async function chooseBusinessType(value: BusinessType) {
     setBusinessType(value);
@@ -676,20 +689,46 @@ export default function IntakeWizard({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.pptx,.csv,.md,.markdown"
+          accept=".pdf,.pptx,.csv,.md,.markdown,.mp3,.m4a,.wav,.aac,.ogg,.flac"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void handleFile(f);
           }}
         />
-        <GhostButton onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          {uploading ? "Reading your document…" : "Upload a document"}
-        </GhostButton>
-        <span className="text-[12px]" style={{ color: "var(--color-steel)" }}>
-          Pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown, up to 4 MB). We&apos;ll
-          pre-fill what we can.
-        </span>
+        {recorder.recording ? (
+          <div className="flex w-full items-center gap-2">
+            <RecordingBar
+              seconds={recorder.seconds}
+              levels={recorder.levels}
+              onCancel={recorder.cancel}
+              onSend={recorder.stop}
+            />
+          </div>
+        ) : (
+          <>
+            <GhostButton onClick={() => fileInputRef.current?.click()} disabled={!!uploading}>
+              {uploading === "document" ? (
+                <LoaderCircle size={16} className="animate-spin" aria-hidden />
+              ) : (
+                <Paperclip size={16} aria-hidden />
+              )}
+              {uploading === "document" ? "Reading your document…" : "Upload a document"}
+            </GhostButton>
+            <GhostButton onClick={() => void recorder.start()} disabled={!!uploading}>
+              {uploading === "voice" ? (
+                <LoaderCircle size={16} className="animate-spin" aria-hidden />
+              ) : (
+                <Mic size={16} aria-hidden />
+              )}
+              {uploading === "voice" ? "Listening to your voice note…" : "Record a voice note"}
+            </GhostButton>
+            <span className="text-[12px]" style={{ color: "var(--color-steel)" }}>
+              Talk us through your company, or upload a pitch deck, financials, or notes (PDF, PowerPoint,
+              CSV, Markdown, or audio, up to 4 MB). We&apos;ll pre-fill what we can.
+            </span>
+          </>
+        )}
         {uploadNote && (
           <p
             className="w-full text-[13px]"
@@ -698,6 +737,17 @@ export default function IntakeWizard({
           >
             {uploadNote.text}
           </p>
+        )}
+        {uploadNote?.transcript && (
+          <blockquote
+            className="w-full border-l-2 pl-3 text-[13px] leading-[1.5]"
+            style={{ borderColor: "var(--color-mist)", color: "var(--color-steel)" }}
+          >
+            <span className="font-[500]" style={{ color: "var(--color-iron)" }}>
+              What we heard:{" "}
+            </span>
+            {uploadNote.transcript}
+          </blockquote>
         )}
       </div>
 
@@ -1009,6 +1059,9 @@ function GhostButton({
       onClick={onClick}
       disabled={disabled}
       style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "8px",
         cursor: disabled ? "not-allowed" : "pointer",
         borderRadius: "8px",
         padding: "11px 16px",

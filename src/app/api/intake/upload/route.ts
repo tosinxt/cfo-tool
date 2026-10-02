@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   const kind = kindFromFilename(file.name);
-  if (!kind) return fail("Unsupported file type. Please upload a PDF, PowerPoint (.pptx), CSV, or Markdown file.", 415);
+  if (!kind) return fail("Unsupported file type. Please upload a PDF, PowerPoint (.pptx), CSV, Markdown, or audio (MP3, M4A, WAV, AAC, OGG, FLAC) file.", 415);
   if (file.size > MAX_UPLOAD_BYTES) return fail("That file is too large. Please upload a file under 4 MB.", 413);
   if (file.size === 0) return fail("That file is empty.", 400);
 
@@ -81,12 +81,17 @@ export async function POST(req: NextRequest) {
 
   let text: string;
   try {
-    text = await extractUploadText(kind, Buffer.from(await file.arrayBuffer()));
+    text = await extractUploadText(kind, Buffer.from(await file.arrayBuffer()), file.name);
   } catch (err) {
     return fail(err instanceof Error ? err.message : "We couldn't read that file.", 422);
   }
   if (!text) {
-    return fail("We couldn't find any text in that file. If it's a scanned document, try a text-based export.", 422);
+    return fail(
+      kind === "audio"
+        ? "We couldn't hear any speech in that voice note."
+        : "We couldn't find any text in that file. If it's a scanned document, try a text-based export.",
+      422
+    );
   }
 
   let fields;
@@ -152,5 +157,11 @@ export async function POST(req: NextRequest) {
     { kind, extracted: Object.keys(fields).length, applied: applied.length }
   ).catch(() => {});
 
-  return NextResponse.json({ ok: true, filename: file.name, fields, applied });
+  return NextResponse.json({
+    ok: true,
+    filename: file.name,
+    fields,
+    applied,
+    ...(kind === "audio" ? { transcript: text } : {}),
+  });
 }

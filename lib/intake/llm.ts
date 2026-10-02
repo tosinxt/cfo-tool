@@ -1,11 +1,14 @@
 export type Role = "system" | "user" | "assistant";
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "input_audio"; input_audio: { data: string; format: string } };
 
 const MODEL = "anthropic/claude-sonnet-4-5";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export async function callModel(
-  messages: { role: Role; content: string }[],
-  opts?: { json?: boolean; maxTokens?: number }
+  messages: { role: Role; content: string | ContentPart[] }[],
+  opts?: { json?: boolean; maxTokens?: number; model?: string }
 ): Promise<string> {
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
@@ -16,7 +19,7 @@ export async function callModel(
       "X-Title": "Series A HUB",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: opts?.model ?? MODEL,
       max_tokens: opts?.maxTokens ?? 1200,
       messages,
       ...(opts?.json ? { response_format: { type: "json_object" } } : {}),

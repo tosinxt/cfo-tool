@@ -1,9 +1,13 @@
 import JSZip from "jszip";
+import { callModel } from "./llm";
 
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // Vercel function bodies cap at ~4.5MB
 export const MAX_TEXT_CHARS = 100_000;
 
-export type UploadKind = "pdf" | "pptx" | "csv" | "md";
+// Gemini takes audio input through OpenRouter; Claude (the default model) doesn't.
+const TRANSCRIBE_MODEL = "google/gemini-2.5-flash";
+
+export type UploadKind = "pdf" | "pptx" | "csv" | "md" | "audio";
 
 const EXT_TO_KIND: Record<string, UploadKind> = {
   pdf: "pdf",
@@ -11,6 +15,13 @@ const EXT_TO_KIND: Record<string, UploadKind> = {
   csv: "csv",
   md: "md",
   markdown: "md",
+  mp3: "audio",
+  m4a: "audio",
+  wav: "audio",
+  aac: "audio",
+  ogg: "audio",
+  flac: "audio",
+  webm: "audio", // Chrome's in-browser recordings; not in OpenRouter's documented list but Gemini accepts it
 };
 
 export function kindFromFilename(name: string): UploadKind | null {
@@ -65,7 +76,34 @@ async function parsePptx(buf: Buffer): Promise<string> {
   return out.join("\n\n");
 }
 
-export async function extractUploadText(kind: UploadKind, buf: Buffer): Promise<string> {
+async function transcribeAudio(buf: Buffer, format: string): Promise<string> {
+  try {
+    return await callModel(
+      [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Transcribe this voice note verbatim. Return only the transcript text, with no commentary. If there is no speech, return nothing.",
+            },
+            { type: "input_audio", input_audio: { data: buf.toString("base64"), format } },
+          ],
+        },
+      ],
+      { model: TRANSCRIBE_MODEL, maxTokens: 8000 }
+    );
+  } catch (err) {
+    console.error("[intake/upload] transcription failed", err);
+    throw new Error("We couldn't transcribe that voice note. Please try again, or try an MP3 or M4A file.");
+  }
+}
+
+export async function extractUploadText(
+  kind: UploadKind,
+  buf: Buffer,
+  filename: string
+): Promise<string> {
   let text: string;
   switch (kind) {
     case "pdf":
@@ -73,6 +111,9 @@ export async function extractUploadText(kind: UploadKind, buf: Buffer): Promise<
       break;
     case "pptx":
       text = await parsePptx(buf);
+      break;
+    case "audio":
+      text = await transcribeAudio(buf, filename.split(".").pop()!.toLowerCase());
       break;
     case "csv":
     case "md":

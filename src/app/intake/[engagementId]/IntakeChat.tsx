@@ -2,8 +2,11 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { ArrowUp, LoaderCircle, Mic, Paperclip, Pause, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Cloudscape from "@/components/forgeui/cloudscape";
+import { formatDuration, useVoiceRecorder, type Recording } from "./useVoiceRecorder";
+import { IconButton, RecordingBar } from "./VoiceControls";
 
 interface Props {
   engagementId: string;
@@ -16,9 +19,17 @@ interface Props {
   serverAnswers?: Record<string, unknown>;
 }
 
+interface VoiceNote extends Recording {
+  /** Object URL for playback. Only valid this session, so never persisted. */
+  url?: string;
+  transcribing?: boolean;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
+  /** For a voice note, its transcript — that's what the interviewer reads. */
   content: string;
+  voice?: VoiceNote;
 }
 
 interface Progress {
@@ -64,7 +75,9 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
       const saved = localStorage.getItem(STORAGE_KEY(engagementId));
       if (saved) {
         const parsed = JSON.parse(saved) as { messages: ChatMessage[] };
-        if (parsed.messages?.length) return parsed.messages;
+        // Drop a voice note whose transcription was interrupted by a reload.
+        const restored = parsed.messages?.filter((m) => m.content);
+        if (restored?.length) return restored;
       }
     } catch { /* ignore */ }
     const hasFormDraft = Object.keys(serverAnswers ?? {}).length > 0;
@@ -97,13 +110,17 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [lastFailedText, setLastFailedText] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY(engagementId), JSON.stringify({ messages, collected, progress }));
+      const persisted = messages.map((m) =>
+        m.voice ? { ...m, voice: { durationSec: m.voice.durationSec, peaks: m.voice.peaks } } : m
+      );
+      localStorage.setItem(STORAGE_KEY(engagementId), JSON.stringify({ messages: persisted, collected, progress }));
     } catch { /* ignore */ }
   }, [messages, collected, progress, engagementId]);
 
@@ -127,7 +144,7 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
       const { status, data } = await fetchJson("/api/intake/chat", {
         engagementId,
         token,
-        history,
+        history: history.map(({ role, content }) => ({ role, content })),
         collected,
       });
 
@@ -276,10 +293,62 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
     }
   }
 
+  // A voice note is a chat turn: show it straight away, transcribe it, then
+  // send the transcript to the interviewer like a typed answer.
+  async function sendVoice(file: File, rec: Recording) {
+    const base = messages;
+    const voice: VoiceNote = { ...rec, url: URL.createObjectURL(file) };
+    setMessages([...base, { role: "user", content: "", voice: { ...voice, transcribing: true } }]);
+    setTranscribing(true);
+    setError(null);
+
+    try {
+      const body = new FormData();
+      body.append("engagementId", engagementId);
+      body.append("token", token);
+      body.append("file", file);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90_000);
+      let res: Response;
+      try {
+        res = await fetch("/api/intake/transcribe", { method: "POST", body, signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      const data = (await res.json().catch(() => ({}))) as { error?: string; text?: string };
+
+      if (!res.ok || !data.text) {
+        if (TERMINAL_STATUSES.has(res.status)) {
+          setFatalError(data.error ?? "Something went wrong");
+          return;
+        }
+        throw new Error(data.error ?? "We couldn't transcribe that voice note. Please try again.");
+      }
+
+      const nextHistory = [...base, { role: "user" as const, content: data.text, voice }];
+      setMessages(nextHistory);
+      void postTurn(nextHistory);
+    } catch (err) {
+      setMessages(base);
+      URL.revokeObjectURL(voice.url!);
+      setError(
+        err instanceof Error && err.name !== "AbortError"
+          ? err.message
+          : "That took too long. Please try a shorter voice note."
+      );
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  const recorder = useVoiceRecorder((file, rec) => void sendVoice(file, rec), setError);
+
+  const busy = sending || transcribing || done || submitting || !!fatalError;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || sending || done || fatalError) return;
+    if (!text || busy) return;
     send(text);
   }
 
@@ -391,9 +460,13 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
             className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-6"
             aria-live="polite"
           >
-            {messages.map((m, i) => (
-              <ChatBubble key={i} role={m.role} content={m.content} />
-            ))}
+            {messages.map((m, i) =>
+              m.voice ? (
+                <VoiceBubble key={i} voice={m.voice} transcript={m.content} />
+              ) : (
+                <ChatBubble key={i} role={m.role} content={m.content} />
+              )
+            )}
             {sending && <TypingBubble />}
             {error && (
               <motion.div
@@ -418,69 +491,72 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
 
         <form
           onSubmit={handleSubmit}
-          className="flex items-end gap-2 border-t px-4 py-3"
+          className="flex items-end gap-2 border-t px-3 py-3"
           style={{ borderColor: "rgba(0,0,0,0.08)" }}
         >
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.pptx,.csv,.md,.markdown"
+            accept=".pdf,.pptx,.csv,.md,.markdown,.mp3,.m4a,.wav,.aac,.ogg,.flac"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void handleFile(f);
             }}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading || sending || done || submitting || !!fatalError}
-            title="Upload a pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown — up to 4 MB) and we'll pre-fill what we can"
-            aria-label="Upload a document"
-            style={{
-              flexShrink: 0, height: "40px", padding: "0 12px", borderRadius: "10px",
-              background: "transparent", color: "var(--color-ink)", border: "1px solid #b8bdb8",
-              fontFamily: "var(--font-af)", fontSize: "13px",
-              cursor: uploading || sending || done || submitting || !!fatalError ? "not-allowed" : "pointer",
-              opacity: uploading || sending || done || submitting || !!fatalError ? 0.5 : 1,
-            }}
-          >
-            {uploading ? "Reading…" : "Upload"}
-          </button>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-            placeholder={fatalError ? "This interview has ended." : done ? "Submitting your answers…" : "Type your answer…"}
-            disabled={sending || done || submitting || !!fatalError}
-            rows={1}
-            style={{
-              flex: 1, resize: "none", maxHeight: "120px",
-              fontFamily: "var(--font-af)", fontSize: "15px", color: "var(--color-ink)",
-              background: "rgba(255,255,255,0.92)", border: "1px solid #b8bdb8",
-              borderRadius: "10px", padding: "10px 14px", outline: "none",
-              opacity: fatalError ? 0.6 : 1,
-            }}
-          />
-          <button
-            type="submit"
-            disabled={sending || done || submitting || !!fatalError || !input.trim()}
-            style={{
-              flexShrink: 0, height: "40px", padding: "0 16px", borderRadius: "10px",
-              background: "var(--color-ink)", color: "white", border: "none",
-              fontFamily: "var(--font-af)", fontSize: "14px", fontWeight: 500,
-              cursor: sending || done || submitting || !!fatalError || !input.trim() ? "not-allowed" : "pointer",
-              opacity: sending || done || submitting || !!fatalError || !input.trim() ? 0.5 : 1,
-            }}
-          >
-            {submitting ? "Submitting…" : "Send"}
-          </button>
+          {recorder.recording ? (
+            <RecordingBar
+              seconds={recorder.seconds}
+              levels={recorder.levels}
+              onCancel={recorder.cancel}
+              onSend={recorder.stop}
+            />
+          ) : (
+            <>
+              <IconButton
+                label={uploading ? "Reading your document…" : "Attach a pitch deck, financials, or notes"}
+                title="Attach a pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown — up to 4 MB) and we'll pre-fill what we can"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || busy}
+              >
+                {uploading ? <LoaderCircle size={20} className="animate-spin" /> : <Paperclip size={20} />}
+              </IconButton>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                placeholder={
+                  fatalError ? "This interview has ended." : done ? "Submitting your answers…" : "Type your answer…"
+                }
+                aria-label="Your answer"
+                disabled={busy}
+                rows={1}
+                className="focus-visible:border-[var(--color-hudson-deep)]"
+                style={{
+                  flex: 1, resize: "none", maxHeight: "120px", minHeight: "44px",
+                  fontFamily: "var(--font-af)", fontSize: "15px", lineHeight: "22px", color: "var(--color-ink)",
+                  background: "rgba(255,255,255,0.92)", border: "1px solid #b8bdb8",
+                  borderRadius: "22px", padding: "10px 16px", outline: "none",
+                  opacity: fatalError ? 0.6 : 1,
+                }}
+              />
+              {input.trim() || submitting ? (
+                <IconButton label={submitting ? "Submitting…" : "Send"} type="submit" disabled={busy} primary>
+                  {submitting ? <LoaderCircle size={20} className="animate-spin" /> : <ArrowUp size={20} />}
+                </IconButton>
+              ) : (
+                <IconButton label="Record a voice note" onClick={() => void recorder.start()} disabled={busy || uploading}>
+                  <Mic size={20} />
+                </IconButton>
+              )}
+            </>
+          )}
         </form>
       </div>
     </main>
@@ -537,5 +613,104 @@ function TypingBubble() {
         ))}
       </div>
     </div>
+  );
+}
+
+function VoiceBubble({ voice, transcript }: { voice: VoiceNote; transcript: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) audio.pause();
+    else void audio.play();
+  }
+
+  const played = Math.round(progress * voice.peaks.length);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      style={{ display: "flex", justifyContent: "flex-end" }}
+    >
+      <div
+        style={{
+          width: "min(82%, 320px)",
+          padding: "8px 12px 10px",
+          borderRadius: "14px",
+          borderBottomRightRadius: "4px",
+          background: "var(--color-hudson-deep)",
+          color: "white",
+          fontFamily: "var(--font-af)",
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          {voice.url ? (
+            <>
+              {/* Recorded WebM often reports no duration, so the recorder's own timing is used instead. */}
+              <audio
+                ref={audioRef}
+                src={voice.url}
+                preload="metadata"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => {
+                  setPlaying(false);
+                  setProgress(0);
+                }}
+                onTimeUpdate={(e) => setProgress(Math.min(1, e.currentTarget.currentTime / voice.durationSec))}
+              />
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={playing ? "Pause voice note" : "Play voice note"}
+                className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full bg-white transition-transform duration-150 hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                style={{ color: "var(--color-hudson-deep)" }}
+              >
+                {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
+              </button>
+            </>
+          ) : (
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/20" aria-hidden>
+              <Mic size={16} />
+            </span>
+          )}
+          <div aria-hidden className="flex h-7 min-w-0 flex-1 items-center gap-[2px] overflow-hidden">
+            {voice.peaks.map((level, i) => (
+              <span
+                key={i}
+                className="min-w-0 flex-1 rounded-full"
+                style={{
+                  height: `${Math.max(3, level * 26)}px`,
+                  background: "white",
+                  opacity: i < played ? 1 : 0.5,
+                }}
+              />
+            ))}
+          </div>
+          <span className="flex-shrink-0 text-[12px] tabular-nums" style={{ opacity: 0.9 }}>
+            {formatDuration(voice.durationSec)}
+          </span>
+        </div>
+        {voice.transcribing ? (
+          <p className="mt-2 flex items-center gap-1.5 text-[12px]" style={{ opacity: 0.9 }}>
+            <LoaderCircle size={12} className="animate-spin" aria-hidden />
+            Transcribing…
+          </p>
+        ) : (
+          transcript && (
+            <p
+              className="mt-2 pt-2 text-[13px] leading-[1.5]"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.2)", opacity: 0.95, whiteSpace: "pre-wrap" }}
+            >
+              {transcript}
+            </p>
+          )
+        )}
+      </div>
+    </motion.div>
   );
 }
