@@ -130,6 +130,7 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
   // Index of the assistant message currently being revealed word by word.
   const [revealIdx, setRevealIdx] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -145,6 +146,30 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending, uploading, revealIdx]);
+
+  // iOS Safari doesn't shrink the layout when the keyboard opens — it shrinks the
+  // visible area and pans the page under it, which scrolls the header away and
+  // exposes blank space below. Pin the chat to the visible area instead.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const main = mainRef.current;
+    if (!vv || !main) return;
+    const update = () => {
+      const el = scrollRef.current;
+      const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      main.style.height = `${vv.height}px`;
+      main.style.transform = `translateY(${vv.offsetTop}px)`;
+      // Keep the latest message in view when the keyboard opens.
+      if (atBottom && el) el.scrollTop = el.scrollHeight;
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
 
   function scrollToBottom() {
     const el = scrollRef.current;
@@ -394,7 +419,8 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
 
   return (
     <main
-      className="flex h-dvh flex-col"
+      ref={mainRef}
+      className="fixed inset-x-0 top-0 flex h-dvh flex-col"
       style={{ fontFamily: "var(--font-af)", background: "var(--color-linen)" }}
     >
       <header className="relative flex h-14 flex-shrink-0 items-center justify-between gap-4 px-4 sm:px-6">
@@ -459,7 +485,7 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
           </a>
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
           {isWelcome ? (
             <Welcome
               opener={messages[0].content}

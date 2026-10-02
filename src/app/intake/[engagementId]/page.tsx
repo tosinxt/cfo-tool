@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { adminDb } from "@/lib/firebase/admin";
 import IntakeChat from "./IntakeChat";
 import GateError from "./GateError";
@@ -10,6 +10,15 @@ export const metadata: Metadata = {
   title: "Your Intake Interview",
   description: "Answer a few questions so we can build your investor-ready Series A pitch deck.",
   robots: { index: false, follow: false },
+};
+
+// Android Chrome: shrink the page when the keyboard opens, so the chat's
+// composer stays above it. (iOS ignores this; IntakeChat handles iOS itself.)
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 interface Props {
