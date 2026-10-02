@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { ArrowUp, LoaderCircle, Mic, Paperclip, Pause, Play } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { AlertCircle, ArrowUp, Check, LoaderCircle, Mic, Paperclip, Pause, Play, Type } from "lucide-react";
 import { useRouter } from "next/navigation";
-import Cloudscape from "@/components/forgeui/cloudscape";
+import { ThinkingOrb, type OrbState } from "thinking-orbs";
+import { QUESTIONS_BY_ID } from "@/lib/intake/bank";
 import { formatDuration, useVoiceRecorder, type Recording } from "./useVoiceRecorder";
 import { IconButton, RecordingBar } from "./VoiceControls";
 
@@ -30,6 +31,8 @@ interface ChatMessage {
   /** For a voice note, its transcript — that's what the interviewer reads. */
   content: string;
   voice?: VoiceNote;
+  /** Labels of the fields this assistant turn saved, shown as a chip under it. */
+  saved?: string[];
 }
 
 interface Progress {
@@ -47,6 +50,19 @@ const RESUME_OPENER = "Hi! I can see you already answered some of this on the wr
 // Statuses where the engagement itself is invalid/finished — no amount of
 // retrying will fix it, so we end the conversation instead of leaving the
 // founder typing into a dead chat.
+/** Labels of fields whose value is new or changed between two `collected` snapshots. */
+function savedLabels(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  return Object.entries(after)
+    .filter(([id, v]) => v !== "" && v != null && JSON.stringify(v) !== JSON.stringify(before[id]))
+    .map(([id]) => fieldLabel(id))
+    .filter((label): label is string => !!label);
+}
+
+function fieldLabel(id: string): string | undefined {
+  const q = QUESTIONS_BY_ID[id];
+  return q?.promptLabel ?? q?.label;
+}
+
 const TERMINAL_STATUSES = new Set([403, 404, 409]);
 const REQUEST_TIMEOUT_MS = 45_000;
 
@@ -111,6 +127,8 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
   const [lastFailedText, setLastFailedText] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  // Index of the assistant message currently being revealed word by word.
+  const [revealIdx, setRevealIdx] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,7 +144,12 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, sending]);
+  }, [messages, sending, uploading, revealIdx]);
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
 
   useEffect(() => {
     if (!sending && !done && !fatalError) inputRef.current?.focus();
@@ -167,9 +190,11 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
         finalData?: Record<string, unknown>;
         progress?: Progress;
       };
+      const saved = savedLabels(collected, turn.collected);
       setCollected(turn.collected);
       if (turn.progress) setProgress(turn.progress);
-      setMessages((m) => [...m, { role: "assistant", content: turn.message }]);
+      setMessages([...history, { role: "assistant", content: turn.message, ...(saved.length ? { saved } : {}) }]);
+      setRevealIdx(history.length);
       if (turn.done && turn.finalData) {
         setDone(true);
         await submitFinal(turn.finalData);
@@ -280,7 +305,9 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
         fresh.length > 0
           ? `I read ${file.name} and pulled ${fresh.length} answer${fresh.length === 1 ? "" : "s"} from it, so I'll only ask about what's still missing. Correct me if anything I picked up looks off.`
           : `I read ${file.name}, but didn't find anything new to add. Let's keep going.`;
-      setMessages((m) => [...m, { role: "assistant", content: note }]);
+      const saved = fresh.map(([id]) => fieldLabel(id)).filter((l): l is string => !!l);
+      setMessages((m) => [...m, { role: "assistant", content: note, ...(saved.length ? { saved } : {}) }]);
+      setRevealIdx(messages.length);
     } catch (err) {
       setError(
         err instanceof Error && err.name === "AbortError"
@@ -361,138 +388,143 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
     void postTurn(messages, text);
   }
 
-  return (
-    <main className="relative flex min-h-screen flex-col items-center px-4 py-10" style={{ fontFamily: "var(--font-af)" }}>
-      <Cloudscape
-        colorBottom="#a8c8e8"
-        colorMid="#d4e8d4"
-        colorTop="#e8e4f0"
-        speed={1.2}
-        height="100dvh"
-        className="pointer-events-none"
-        style={{ position: "fixed", inset: 0, zIndex: -1, width: "100vw", height: "100dvh" }}
-      />
+  const isWelcome = messages.length === 1 && messages[0].role === "assistant";
+  const lastAssistantIdx = messages.map((m) => m.role).lastIndexOf("assistant");
+  const pct = done ? 100 : progress ? Math.round((progress.covered / progress.total) * 100) : 0;
 
-      <div className="mb-6">
+  return (
+    <main
+      className="flex h-dvh flex-col"
+      style={{ fontFamily: "var(--font-af)", background: "var(--color-linen)" }}
+    >
+      <header className="relative flex h-14 flex-shrink-0 items-center justify-between gap-4 px-4 sm:px-6">
         <span
           className="text-[16px] font-[400] leading-none tracking-[-0.32px]"
           style={{ fontFamily: "var(--font-ppmondwest)", fontFeatureSettings: '"liga" 0', color: "var(--color-ink)" }}
         >
           Series A <span style={{ color: "var(--color-hudson-blue)" }}>HUB</span>
         </span>
-      </div>
-
-      <a
-        href={`/intake/${engagementId}/form?token=${encodeURIComponent(token)}`}
-        className="mb-4 text-[12px] underline underline-offset-2"
-        style={{ color: "var(--color-steel)", textDecorationColor: "var(--color-sage)" }}
-      >
-        Prefer a written form instead? Your answers carry over.
-      </a>
-
-      <div
-        className="relative flex w-full max-w-[560px] flex-1 flex-col rounded-[16px]"
-        style={{
-          background: "rgba(255,255,255,0.85)",
-          border: "1px solid rgba(0,0,0,0.08)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
-          minHeight: "70vh",
-          maxHeight: "80vh",
-        }}
-      >
+        <div className="flex items-center gap-4 text-[12px]" style={{ color: "var(--color-steel)" }}>
+          {!fatalError && (
+            <span className="tabular-nums">
+              {done ? "All topics covered" : progress ? `${progress.covered} of ${progress.total} topics` : "Interview"}
+            </span>
+          )}
+          <a
+            href={`/intake/${engagementId}/form?token=${encodeURIComponent(token)}`}
+            className="rounded-sm underline underline-offset-2 hover:text-[var(--color-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-hudson-deep)]"
+            style={{ textDecorationColor: "var(--color-mist)" }}
+          >
+            Written form
+          </a>
+        </div>
         {!fatalError && (
-          <div className="border-b px-5 pb-3 pt-4" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-            <div className="mb-2 flex items-baseline justify-between gap-3">
-              <span
-                className="text-[11px] font-[500] uppercase tracking-[0.06em]"
-                style={{ color: "var(--color-steel)" }}
-              >
-                {done ? "All topics covered" : "Interview progress"}
-              </span>
-              {progress && !done && (
-                <span className="text-[11px] tabular-nums" style={{ color: "var(--color-steel)" }}>
-                  {progress.covered} of {progress.total} topics
-                </span>
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            aria-label="Interview progress"
+            className="absolute inset-x-0 bottom-0 h-[2px]"
+            style={{ background: "rgba(0,0,0,0.06)" }}
+          >
+            <motion.div
+              className="h-full"
+              style={{ background: "var(--color-hudson-deep)" }}
+              initial={false}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+            />
+          </div>
+        )}
+      </header>
+
+      {fatalError ? (
+        <div className="mx-auto flex max-w-[480px] flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-full"
+            style={{ background: "var(--color-paper)", border: "1px solid var(--color-sage)" }}
+          >
+            <AlertCircle size={20} color="var(--color-iron)" aria-hidden />
+          </div>
+          <p className="text-[15px] leading-[1.6]" style={{ color: "var(--color-steel)" }}>
+            {fatalError}
+          </p>
+          <a
+            href="mailto:support@pitchready.co"
+            className="text-[14px] font-[500] underline underline-offset-4"
+            style={{ color: "var(--color-iron)", textDecorationColor: "var(--color-sage)" }}
+          >
+            Contact support →
+          </a>
+        </div>
+      ) : (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          {isWelcome ? (
+            <Welcome
+              opener={messages[0].content}
+              resuming={messages[0].content === RESUME_OPENER}
+              disabled={busy || uploading}
+              onUpload={() => fileInputRef.current?.click()}
+              onRecord={() => void recorder.start()}
+              onType={() => inputRef.current?.focus()}
+            />
+          ) : (
+            <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pb-6 pt-8 sm:px-6" aria-live="polite">
+              {messages.map((m, i) =>
+                m.role === "assistant" ? (
+                  <AssistantMessage
+                    key={i}
+                    content={m.content}
+                    saved={m.saved}
+                    active={i === lastAssistantIdx && !sending && !uploading}
+                    reveal={i === revealIdx}
+                    onRevealStep={scrollToBottom}
+                    onRevealed={() => setRevealIdx(null)}
+                  />
+                ) : m.voice ? (
+                  <VoiceBubble key={i} voice={m.voice} transcript={m.content} />
+                ) : (
+                  <UserMessage key={i} content={m.content} />
+                )
+              )}
+              {(sending || uploading) && (
+                <Thinking
+                  label={uploading ? "Reading your document" : "Thinking"}
+                  state={uploading ? "searching" : "solving"}
+                />
+              )}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 pl-10"
+                  role="alert"
+                >
+                  <AlertCircle size={14} color="#b91c1c" aria-hidden />
+                  <p className="text-[13px]" style={{ color: "#b91c1c" }}>{error}</p>
+                  {lastFailedText && (
+                    <button
+                      type="button"
+                      onClick={handleRetry}
+                      className="cursor-pointer text-[13px] font-[500] underline underline-offset-2"
+                      style={{ color: "var(--color-hudson-deep)" }}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </motion.div>
               )}
             </div>
-            <div
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={progress?.total ?? 100}
-              aria-valuenow={done ? (progress?.total ?? 100) : (progress?.covered ?? 0)}
-              aria-label="Interview progress"
-              style={{ height: "4px", borderRadius: "99px", background: "rgba(0,0,0,0.07)", overflow: "hidden" }}
-            >
-              <motion.div
-                style={{ height: "100%", borderRadius: "99px", background: "var(--color-hudson-blue)" }}
-                initial={false}
-                animate={{ width: done ? "100%" : `${progress ? Math.round((progress.covered / progress.total) * 100) : 0}%` }}
-                transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-              />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {fatalError ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-full"
-              style={{ background: "var(--color-linen)", border: "1px solid var(--color-sage)" }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-iron)" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
-              </svg>
-            </div>
-            <p className="text-[14px] leading-[1.6]" style={{ color: "var(--color-steel)" }}>
-              {fatalError}
-            </p>
-            <a
-              href="mailto:support@pitchready.co"
-              className="text-[14px] font-[500] underline underline-offset-4"
-              style={{ color: "var(--color-iron)", textDecorationColor: "var(--color-sage)" }}
-            >
-              Contact support →
-            </a>
-          </div>
-        ) : (
-          <div
-            ref={scrollRef}
-            className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-6"
-            aria-live="polite"
-          >
-            {messages.map((m, i) =>
-              m.voice ? (
-                <VoiceBubble key={i} voice={m.voice} transcript={m.content} />
-              ) : (
-                <ChatBubble key={i} role={m.role} content={m.content} />
-              )
-            )}
-            {sending && <TypingBubble />}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2" role="alert"
-              >
-                <p className="text-[12px]" style={{ color: "#dc2626" }}>⚠ {error}</p>
-                {lastFailedText && (
-                  <button
-                    type="button"
-                    onClick={handleRetry}
-                    className="text-[12px] font-[500] underline underline-offset-2"
-                    style={{ color: "var(--color-hudson-blue)" }}
-                  >
-                    Retry
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </div>
-        )}
-
+      <div className="flex-shrink-0 px-4 pb-4 sm:px-6" style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
         <form
           onSubmit={handleSubmit}
-          className="flex items-end gap-2 border-t px-3 py-3"
-          style={{ borderColor: "rgba(0,0,0,0.08)" }}
+          className="mx-auto w-full max-w-[720px] rounded-[24px] p-2 transition-shadow duration-150 focus-within:shadow-[0_4px_20px_rgba(0,0,0,0.08)]"
+          style={{ background: "var(--color-paper)", border: "1px solid var(--color-mist)", boxShadow: "0 2px 12px rgba(0,0,0,0.04)" }}
         >
           <input
             ref={fileInputRef}
@@ -505,26 +537,24 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
             }}
           />
           {recorder.recording ? (
-            <RecordingBar
-              seconds={recorder.seconds}
-              levels={recorder.levels}
-              onCancel={recorder.cancel}
-              onSend={recorder.stop}
-            />
+            <div className="flex items-center gap-2">
+              <RecordingBar
+                seconds={recorder.seconds}
+                levels={recorder.levels}
+                onCancel={recorder.cancel}
+                onSend={recorder.stop}
+              />
+            </div>
           ) : (
             <>
-              <IconButton
-                label={uploading ? "Reading your document…" : "Attach a pitch deck, financials, or notes"}
-                title="Attach a pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown — up to 4 MB) and we'll pre-fill what we can"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || busy}
-              >
-                {uploading ? <LoaderCircle size={20} className="animate-spin" /> : <Paperclip size={20} />}
-              </IconButton>
               <textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -537,55 +567,151 @@ export default function IntakeChat({ engagementId, token, serverAnswers }: Props
                 aria-label="Your answer"
                 disabled={busy}
                 rows={1}
-                className="focus-visible:border-[var(--color-hudson-deep)]"
-                style={{
-                  flex: 1, resize: "none", maxHeight: "120px", minHeight: "44px",
-                  fontFamily: "var(--font-af)", fontSize: "15px", lineHeight: "22px", color: "var(--color-ink)",
-                  background: "rgba(255,255,255,0.92)", border: "1px solid #b8bdb8",
-                  borderRadius: "22px", padding: "10px 16px", outline: "none",
-                  opacity: fatalError ? 0.6 : 1,
-                }}
+                className="block w-full resize-none bg-transparent px-3 pt-2 outline-none placeholder:text-[var(--color-steel)] disabled:opacity-60"
+                style={{ fontSize: "16px", lineHeight: "24px", color: "var(--color-ink)", maxHeight: "200px" }}
               />
-              {input.trim() || submitting ? (
-                <IconButton label={submitting ? "Submitting…" : "Send"} type="submit" disabled={busy} primary>
+              <div className="mt-1 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <IconButton
+                    label={uploading ? "Reading your document…" : "Attach a pitch deck, financials, or notes"}
+                    title="Attach a pitch deck, financials, or notes (PDF, PowerPoint, CSV, Markdown — up to 4 MB) and we'll pre-fill what we can"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading || busy}
+                  >
+                    {uploading ? <LoaderCircle size={20} className="animate-spin" /> : <Paperclip size={20} />}
+                  </IconButton>
+                  <IconButton label="Record a voice note" onClick={() => void recorder.start()} disabled={busy || uploading}>
+                    <Mic size={20} />
+                  </IconButton>
+                </div>
+                <IconButton
+                  label={submitting ? "Submitting…" : "Send"}
+                  type="submit"
+                  disabled={busy || !input.trim()}
+                  primary
+                >
                   {submitting ? <LoaderCircle size={20} className="animate-spin" /> : <ArrowUp size={20} />}
                 </IconButton>
-              ) : (
-                <IconButton label="Record a voice note" onClick={() => void recorder.start()} disabled={busy || uploading}>
-                  <Mic size={20} />
-                </IconButton>
-              )}
+              </div>
             </>
           )}
         </form>
+        <p className="mx-auto mt-2 max-w-[720px] text-center text-[12px]" style={{ color: "var(--color-steel)" }}>
+          Answers save as you go. Reviewed by a CFO.
+        </p>
       </div>
     </main>
   );
 }
 
-function ChatBubble({ role, content }: { role: "user" | "assistant"; content: string }) {
-  const isUser = role === "user";
+/** The interviewer's orb — stands in for an avatar beside its messages. */
+function Orb({ state = "breathing", size = 20, paused = false }: { state?: OrbState; size?: 20 | 64; paused?: boolean }) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <span aria-hidden className="flex flex-shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <ThinkingOrb state={state} size={size} paused={paused || !!reduceMotion} />
+    </span>
+  );
+}
+
+const REVEAL_MS_PER_WORD = 28;
+const REVEAL_MAX_MS = 1600;
+
+function AssistantMessage({
+  content,
+  saved,
+  active,
+  reveal,
+  onRevealStep,
+  onRevealed,
+}: {
+  content: string;
+  saved?: string[];
+  /** Only the latest reply's orb animates, so a long chat isn't full of moving orbs. */
+  active: boolean;
+  reveal: boolean;
+  onRevealStep: () => void;
+  onRevealed: () => void;
+}) {
+  // The reply arrives whole; it is revealed word by word so it reads like it's being written.
+  const words = content.split(/(\s+)/);
+  const [shown, setShown] = useState(reveal ? 0 : words.length);
+  const revealing = shown < words.length;
+
+  useEffect(() => {
+    if (!reveal) return;
+    // Long replies reveal several words per tick so the whole thing stays under REVEAL_MAX_MS.
+    const ticks = Math.min(words.length, Math.floor(REVEAL_MAX_MS / REVEAL_MS_PER_WORD));
+    const step = Math.ceil(words.length / ticks);
+    const id = setInterval(() => {
+      setShown((n) => {
+        const next = Math.min(words.length, n + step);
+        if (next >= words.length) clearInterval(id);
+        return next;
+      });
+      onRevealStep();
+    }, REVEAL_MS_PER_WORD);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal]);
+
+  useEffect(() => {
+    if (reveal && !revealing) onRevealed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealing]);
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start" }}
+      className="flex gap-3"
+    >
+      <div className="pt-[3px]">
+        <Orb paused={!active} />
+      </div>
+      <div className="min-w-0 flex-1">
+        {/* Screen readers get the full reply at once instead of every word. */}
+        <span className="sr-only">{content}</span>
+        <p
+          aria-hidden
+          className="text-[16px] leading-[1.65]"
+          style={{ color: "var(--color-ink)", whiteSpace: "pre-wrap" }}
+        >
+          {words.slice(0, shown).join("")}
+        </p>
+        {saved && saved.length > 0 && !revealing && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-[12px]"
+            style={{ background: "var(--color-paper)", border: "1px solid var(--color-sage)", color: "var(--color-steel)" }}
+          >
+            <Check size={13} color="var(--color-hudson-deep)" strokeWidth={2.5} aria-hidden />
+            <span className="font-[500]" style={{ color: "var(--color-iron)" }}>Saved</span>
+            <span className="truncate">
+              {saved.slice(0, 3).join(" · ")}
+              {saved.length > 3 ? ` · +${saved.length - 3} more` : ""}
+            </span>
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function UserMessage({ content }: { content: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="flex justify-end"
     >
       <div
-        style={{
-          maxWidth: "82%",
-          padding: "10px 14px",
-          borderRadius: "14px",
-          fontSize: "14px",
-          lineHeight: 1.55,
-          fontFamily: "var(--font-af)",
-          whiteSpace: "pre-wrap",
-          background: isUser ? "var(--color-hudson-blue)" : "rgba(0,0,0,0.05)",
-          color: isUser ? "white" : "var(--color-ink)",
-          borderBottomRightRadius: isUser ? "4px" : "14px",
-          borderBottomLeftRadius: isUser ? "14px" : "4px",
-        }}
+        className="max-w-[80%] rounded-[20px] px-4 py-2.5 text-[16px] leading-[1.6]"
+        style={{ background: "rgba(0,0,0,0.055)", color: "var(--color-ink)", whiteSpace: "pre-wrap" }}
       >
         {content}
       </div>
@@ -593,26 +719,75 @@ function ChatBubble({ role, content }: { role: "user" | "assistant"; content: st
   );
 }
 
-function TypingBubble() {
+function Thinking({ label, state }: { label: string; state: OrbState }) {
   return (
-    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-      <div
+    <div className="flex items-center gap-3" role="status">
+      <Orb state={state} />
+      <span className="gic-shimmer-text text-[15px] font-[500]">{label}</span>
+    </div>
+  );
+}
+
+function Welcome({
+  opener,
+  resuming,
+  disabled,
+  onUpload,
+  onRecord,
+  onType,
+}: {
+  opener: string;
+  resuming: boolean;
+  disabled: boolean;
+  onUpload: () => void;
+  onRecord: () => void;
+  onType: () => void;
+}) {
+  const options = [
+    { label: "Upload my pitch deck", icon: <Paperclip size={16} aria-hidden />, onClick: onUpload },
+    { label: "Record a voice note", icon: <Mic size={16} aria-hidden />, onClick: onRecord },
+    { label: "Just start typing", icon: <Type size={16} aria-hidden />, onClick: onType },
+  ];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="mx-auto flex min-h-full w-full max-w-[640px] flex-col justify-center px-6 py-10"
+    >
+      <div className="mb-6">
+        <Orb size={64} />
+      </div>
+      <h1
+        className="text-[30px] leading-[1.12] sm:text-[40px]"
         style={{
-          display: "flex", gap: "4px", alignItems: "center",
-          padding: "12px 16px", borderRadius: "14px", borderBottomLeftRadius: "4px",
-          background: "rgba(0,0,0,0.05)",
+          fontFamily: "var(--font-ppmondwest)",
+          fontFeatureSettings: '"liga" 0',
+          letterSpacing: "-0.02em",
+          color: "var(--color-ink)",
         }}
       >
-        {[0, 1, 2].map((i) => (
-          <motion.span
-            key={i}
-            style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#9a9f9a" }}
-            animate={{ opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
-          />
+        {resuming ? "Welcome back. Let's finish your story." : "Let's build your Series A story."}
+      </h1>
+      <p className="mt-4 text-[16px] leading-[1.65]" style={{ color: "var(--color-iron)", maxWidth: "56ch" }}>
+        {opener}
+      </p>
+      <div className="mt-8 flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.label}
+            type="button"
+            onClick={o.onClick}
+            disabled={disabled}
+            className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-full px-4 text-[14px] font-[500] transition-colors duration-150 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-hudson-deep)] disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ border: "1px solid var(--color-mist)", color: "var(--color-iron)", background: "rgba(255,255,255,0.6)" }}
+          >
+            {o.icon}
+            {o.label}
+          </button>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -638,12 +813,11 @@ function VoiceBubble({ voice, transcript }: { voice: VoiceNote; transcript: stri
     >
       <div
         style={{
-          width: "min(82%, 320px)",
-          padding: "8px 12px 10px",
-          borderRadius: "14px",
-          borderBottomRightRadius: "4px",
-          background: "var(--color-hudson-deep)",
-          color: "white",
+          width: "min(80%, 340px)",
+          padding: "10px 14px 12px",
+          borderRadius: "20px",
+          background: "rgba(0,0,0,0.055)",
+          color: "var(--color-ink)",
           fontFamily: "var(--font-af)",
         }}
       >
@@ -667,14 +841,14 @@ function VoiceBubble({ voice, transcript }: { voice: VoiceNote; transcript: stri
                 type="button"
                 onClick={toggle}
                 aria-label={playing ? "Pause voice note" : "Play voice note"}
-                className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full bg-white transition-transform duration-150 hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                style={{ color: "var(--color-hudson-deep)" }}
+                className="flex h-9 w-9 flex-shrink-0 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-150 hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-hudson-deep)]"
+                style={{ background: "var(--color-ink)" }}
               >
                 {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
               </button>
             </>
           ) : (
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/20" aria-hidden>
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-black/10" aria-hidden>
               <Mic size={16} />
             </span>
           )}
@@ -685,26 +859,26 @@ function VoiceBubble({ voice, transcript }: { voice: VoiceNote; transcript: stri
                 className="min-w-0 flex-1 rounded-full"
                 style={{
                   height: `${Math.max(3, level * 26)}px`,
-                  background: "white",
-                  opacity: i < played ? 1 : 0.5,
+                  background: "var(--color-ink)",
+                  opacity: i < played ? 0.9 : 0.3,
                 }}
               />
             ))}
           </div>
-          <span className="flex-shrink-0 text-[12px] tabular-nums" style={{ opacity: 0.9 }}>
+          <span className="flex-shrink-0 text-[12px] tabular-nums" style={{ color: "var(--color-steel)" }}>
             {formatDuration(voice.durationSec)}
           </span>
         </div>
         {voice.transcribing ? (
-          <p className="mt-2 flex items-center gap-1.5 text-[12px]" style={{ opacity: 0.9 }}>
+          <p className="mt-2 flex items-center gap-1.5 text-[13px]" style={{ color: "var(--color-steel)" }}>
             <LoaderCircle size={12} className="animate-spin" aria-hidden />
             Transcribing…
           </p>
         ) : (
           transcript && (
             <p
-              className="mt-2 pt-2 text-[13px] leading-[1.5]"
-              style={{ borderTop: "1px solid rgba(255,255,255,0.2)", opacity: 0.95, whiteSpace: "pre-wrap" }}
+              className="mt-2 pt-2 text-[15px] leading-[1.6]"
+              style={{ borderTop: "1px solid rgba(0,0,0,0.08)", whiteSpace: "pre-wrap" }}
             >
               {transcript}
             </p>

@@ -42,6 +42,36 @@
   100% { transform: translateX(-50%); }
 }
 
+/* "Thinking" label in the intake chat: a highlight sweeps across the text. */
+@keyframes gic-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.gic-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-steel) 0%,
+    var(--color-steel) 40%,
+    var(--color-ink) 50%,
+    var(--color-steel) 60%,
+    var(--color-steel) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gic-shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gic-shimmer-text {
+    animation: none;
+    background: none;
+    color: var(--color-steel);
+  }
+}
+
 .gic-marquee-track {
   display: flex;
   width: max-content;
